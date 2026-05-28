@@ -582,6 +582,7 @@ async function logout() {
 async function loadAllData() {
   setLoading(true, 'Cargando tus datos...');
   const uid = currentUser.id;
+  try {
 
   const [g,i,c,inv,act,deu,cfg,cat,ph] = await Promise.all([
     sb.from('gastos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
@@ -621,7 +622,13 @@ async function loadAllData() {
     db.categorias = cat.data;
   }
 
-  setLoading(false);
+    setLoading(false);
+  } catch(err) {
+    setLoading(false);
+    console.error('Error cargando datos:', err);
+    showToast('Error al cargar datos. Verificá que el schema SQL fue ejecutado en Supabase.', 'error');
+    throw err;
+  }
 }
 
 async function refreshTable(table) {
@@ -1236,8 +1243,13 @@ async function init() {
   const {data:{session}}=await sb.auth.getSession();
   if(session?.user) {
     currentUser=session.user;
-    await loadAllData();
-    showApp();
+    try {
+      await loadAllData();
+      showApp();
+    } catch(err) {
+      setLoading(false);
+      document.getElementById('auth-screen').style.display='flex';
+    }
   } else {
     setLoading(false);
     document.getElementById('auth-screen').style.display='flex';
