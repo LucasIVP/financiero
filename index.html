@@ -148,7 +148,8 @@
   <button class="nav-btn" onclick="goTo('tarjetas')">💳 Tarjetas</button>
   <button class="nav-btn" onclick="goTo('inversiones')">📈 Inversiones</button>
   <button class="nav-btn" onclick="goTo('patrimonio')">🏦 Patrimonio</button>
-  <button class="nav-btn" onclick="goTo('config')">⚙️ Config</button>
+  <button class="nav-btn" onclick="goTo('compartido')">🏠 Compartido</button>
+<button class="nav-btn" onclick="goTo('config')">⚙️ Config</button>
   <span class="nav-spacer"></span>
   <span class="nav-user" id="nav-user-email"></span>
   <button class="nav-logout" onclick="logout()">Salir</button>
@@ -267,7 +268,63 @@
   </div>
   <div class="card" style="margin-top:16px"><div class="card-title" style="margin-bottom:14px">Evolución del patrimonio</div><div class="chart-container" style="height:220px"><canvas id="chart-pat"></canvas></div></div>
 </div>
+<div id="page-compartido" class="page">
+  <div class="section-header" style="margin-bottom:20px">
+    <div>
+      <div class="section-title">🏠 Gastos Compartidos</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:2px" id="compartido-subtitle"></div>
+    </div>
+    <div class="month-selector">
+      <select id="comp-month" onchange="renderCompartido()"></select>
+      <select id="comp-year" onchange="renderCompartido()"></select>
+    </div>
+  </div>
 
+  <!-- KPIs -->
+  <div class="grid-3" id="comp-kpis" style="margin-bottom:20px"></div>
+
+  <!-- Conversor proporcional -->
+  <div class="card" style="margin-bottom:20px" id="comp-conversor">
+    <div style="font-weight:600;margin-bottom:14px">⚖️ Ingresos del mes (para cálculo proporcional)</div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+      <div class="form-group"><label id="comp-label-yo">Mi ingreso ARS</label><input type="number" id="comp-ing-yo-ars" placeholder="0" oninput="recalcProporcion()"></div>
+      <div class="form-group"><label>Mi ingreso USD</label><input type="number" id="comp-ing-yo-usd" placeholder="0" oninput="recalcProporcion()"></div>
+      <div class="form-group"><label id="comp-label-otro">Ingreso ARS (pareja)</label><input type="number" id="comp-ing-otro-ars" placeholder="0" oninput="recalcProporcion()"></div>
+      <div class="form-group"><label>Ingreso USD (pareja)</label><input type="number" id="comp-ing-otro-usd" placeholder="0" oninput="recalcProporcion()"></div>
+    </div>
+    <div id="comp-proporcion-result" style="margin-top:14px;padding:12px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted);display:none"></div>
+  </div>
+
+  <!-- Formulario nuevo gasto compartido -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="font-weight:600;margin-bottom:14px">Nuevo gasto compartido</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Fecha</label><input type="date" id="comp-fecha"></div>
+      <div class="form-group"><label>Descripción</label><input type="text" id="comp-desc" placeholder="Ej: Alquiler"></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="comp-monto" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="comp-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Categoría</label><select id="comp-cat"></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="comp-medio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option></select></div>
+      <div class="form-group"><label>Notas</label><input type="text" id="comp-notas" placeholder="Opcional"></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-primary" id="btn-add-compartido" onclick="addGastoCompartido()">+ Agregar gasto compartido</button>
+      <button class="btn btn-ghost" onclick="clearCompartidoForm()">Limpiar</button>
+    </div>
+  </div>
+
+  <!-- Tabla de gastos compartidos -->
+  <div class="card">
+    <div class="section-header"><span style="font-weight:600">Gastos del mes</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Cargado por</th><th>Tu parte</th><th>Parte pareja</th><th></th></tr></thead>
+        <tbody id="comp-table-body"></tbody>
+      </table>
+    </div>
+    <div id="comp-empty" class="empty-state" style="display:none">No hay gastos compartidos este mes</div>
+  </div>
+</div>
 <div id="page-config" class="page">
   <div class="section-title" style="margin-bottom:20px">⚙️ Configuración</div>
   <div class="grid-2">
@@ -675,7 +732,7 @@ async function deleteCat(id){
   db.categorias=db.categorias.filter(c=>c.id!==id);renderConfig();populateCatSelects();showToast('Eliminada');
 }
 function populateCatSelects(){
-  ['g-cat','c-cat'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');});
+  ['g-cat','c-cat','comp-cat'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');});
 }
 
 // EXPORT / IMPORT
@@ -733,9 +790,10 @@ function showApp(){
   fillMonthYearSelects('dash-month','dash-year');
   fillMonthYearSelects('g-month','g-year');
   fillMonthYearSelects('i-month','i-year');
+  fillMonthYearSelects('comp-month','comp-year');
   const today=new Date().toISOString().slice(0,10);
   ['g-fecha','i-fecha','c-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
-  populateCatSelects();renderDashboard();renderConfig();snapshotPatrimonio();
+  populateCatSelects();renderDashboard();renderConfig();snapshotPatrimonio();loadCompartido().then(renderCompartido);
 }
 
 async function init(){
@@ -759,7 +817,209 @@ async function init(){
     }
   });
 }
+// ============================================================
+// GASTOS COMPARTIDOS
+// ============================================================
 
+let dbCompartido = { gastos: [], ingresos: {} };
+// dbCompartido.ingresos = { [user_id]: { ars, usd } }
+
+async function loadCompartido() {
+  const { data: gastos } = await sb.from('gastos_compartidos').select('*').order('fecha', { ascending: false });
+  const { data: ingresos } = await sb.from('ingresos_compartidos').select('*');
+  dbCompartido.gastos = gastos || [];
+  dbCompartido.ingresos = {};
+  (ingresos || []).forEach(r => {
+    if (!dbCompartido.ingresos[r.user_id]) dbCompartido.ingresos[r.user_id] = {};
+    dbCompartido.ingresos[r.user_id][`${r.mes}_${r.anio}`] = r;
+  });
+}
+
+async function addGastoCompartido() {
+  const fecha = document.getElementById('comp-fecha').value;
+  const desc = document.getElementById('comp-desc').value.trim();
+  const monto = parseFloat(document.getElementById('comp-monto').value);
+  const moneda = document.getElementById('comp-moneda').value;
+  const cat = document.getElementById('comp-cat').value;
+  const medio = document.getElementById('comp-medio').value;
+  const notas = document.getElementById('comp-notas').value.trim();
+
+  if (!fecha || !desc || !monto || monto <= 0) {
+    showToast('Completá fecha, descripción y monto', 'error'); return;
+  }
+
+  const btn = document.getElementById('btn-add-compartido');
+  btn.disabled = true;
+
+  const { error } = await sb.from('gastos_compartidos').insert({
+    fecha, descripcion: desc, monto, moneda, categoria: cat,
+    medio, notas, cargado_por: currentUser.id
+  });
+
+  btn.disabled = false;
+  if (error) { showToast('Error al guardar: ' + error.message, 'error'); return; }
+
+  showToast('Gasto compartido agregado ✓');
+  clearCompartidoForm();
+  await loadCompartido();
+  renderCompartido();
+}
+
+function clearCompartidoForm() {
+  ['comp-desc','comp-monto','comp-notas'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('comp-moneda').value = 'ARS';
+  document.getElementById('comp-medio').value = 'transferencia';
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('comp-fecha').value = today;
+}
+
+async function deleteGastoCompartido(id) {
+  if (!confirm('¿Eliminar este gasto compartido?')) return;
+  const { error } = await sb.from('gastos_compartidos').delete().eq('id', id);
+  if (error) { showToast('Error al eliminar', 'error'); return; }
+  showToast('Gasto eliminado');
+  await loadCompartido();
+  renderCompartido();
+}
+
+// Guarda los ingresos del mes en Supabase (upsert por user+mes+año)
+async function saveIngresosCompartido() {
+  const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
+  const arsYo = parseFloat(document.getElementById('comp-ing-yo-ars').value) || 0;
+  const usdYo = parseFloat(document.getElementById('comp-ing-yo-usd').value) || 0;
+
+  await sb.from('ingresos_compartidos').upsert({
+    user_id: currentUser.id,
+    mes: month, anio: year,
+    ingreso_ars: arsYo, ingreso_usd: usdYo,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id,mes,anio' });
+
+  await loadCompartido();
+  recalcProporcion();
+}
+
+function recalcProporcion() {
+  const dolar = db.config.dolar || 1;
+  const arsYo = parseFloat(document.getElementById('comp-ing-yo-ars').value) || 0;
+  const usdYo = parseFloat(document.getElementById('comp-ing-yo-usd').value) || 0;
+  const arsOtro = parseFloat(document.getElementById('comp-ing-otro-ars').value) || 0;
+  const usdOtro = parseFloat(document.getElementById('comp-ing-otro-usd').value) || 0;
+
+  const totalYo = arsYo + (usdYo * dolar);
+  const totalOtro = arsOtro + (usdOtro * dolar);
+  const totalAmbos = totalYo + totalOtro;
+
+  const el = document.getElementById('comp-proporcion-result');
+  if (totalAmbos <= 0) { el.style.display = 'none'; return; }
+
+  const pctYo = Math.round(totalYo / totalAmbos * 100);
+  const pctOtro = 100 - pctYo;
+
+  // Guardar en Supabase con debounce
+  clearTimeout(window._ingresosDebounce);
+  window._ingresosDebounce = setTimeout(saveIngresosCompartido, 1200);
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div><span style="color:var(--text);font-weight:600">Yo</span>
+        <span style="margin-left:8px">${fmtARS(totalYo)} (${pctYo}%)</span></div>
+      <div><span style="color:var(--text);font-weight:600">Pareja</span>
+        <span style="margin-left:8px">${fmtARS(totalOtro)} (${pctOtro}%)</span></div>
+      <div style="margin-left:auto;color:var(--accent2);font-weight:600">
+        Ingreso total combinado: ${fmtARS(totalAmbos)}</div>
+    </div>`;
+
+  // Guardar proporciones globalmente para usar en la tabla
+  window._propYo = pctYo / 100;
+  window._propOtro = pctOtro / 100;
+}
+
+function renderCompartido() {
+  const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
+  document.getElementById('compartido-subtitle').textContent =
+    `${MONTHS[month]} ${year}`;
+
+  const dolar = db.config.dolar || 1;
+  const gastosMes = dbCompartido.gastos.filter(g => {
+    const [y, m] = g.fecha.split('-').map(Number);
+    return m - 1 === month && y === year;
+  });
+
+  // Cargar ingresos guardados del mes si existen
+  const key = `${month}_${year}`;
+  const miIngreso = dbCompartido.ingresos[currentUser.id]?.[key];
+  if (miIngreso) {
+    document.getElementById('comp-ing-yo-ars').value = miIngreso.ingreso_ars || '';
+    document.getElementById('comp-ing-yo-usd').value = miIngreso.ingreso_usd || '';
+  }
+
+  // Buscar ingreso del otro usuario
+  const otroUserId = Object.keys(dbCompartido.ingresos).find(uid => uid !== currentUser.id);
+  const otroIngreso = otroUserId ? dbCompartido.ingresos[otroUserId]?.[key] : null;
+  if (otroIngreso) {
+    document.getElementById('comp-ing-otro-ars').value = otroIngreso.ingreso_ars || '';
+    document.getElementById('comp-ing-otro-usd').value = otroIngreso.ingreso_usd || '';
+  }
+
+  recalcProporcion();
+
+  const propYo = window._propYo ?? 0.5;
+  const propOtro = window._propOtro ?? 0.5;
+
+  const total = gastosMes.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+  const totalYoPart = total * propYo;
+  const totalOtroPart = total * propOtro;
+
+  // KPIs
+  document.getElementById('comp-kpis').innerHTML = `
+    <div class="card">
+      <div class="card-title">Total compartido del mes</div>
+      <div class="card-value amount-negative">${fmtARS(total)}</div>
+      <div class="card-sub">${gastosMes.length} gasto${gastosMes.length !== 1 ? 's' : ''}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Mi parte (${Math.round(propYo*100)}%)</div>
+      <div class="card-value" style="color:var(--accent)">${fmtARS(totalYoPart)}</div>
+      <div class="card-sub">Proporcional a tu ingreso</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Parte pareja (${Math.round(propOtro*100)}%)</div>
+      <div class="card-value" style="color:var(--accent2)">${fmtARS(totalOtroPart)}</div>
+      <div class="card-sub">Proporcional a su ingreso</div>
+    </div>`;
+
+  // Badge total
+  document.getElementById('comp-total-badge').textContent =
+    gastosMes.length > 0 ? `Total: ${fmtARS(total)}` : '';
+
+  // Tabla
+  const tbody = document.getElementById('comp-table-body');
+  const empty = document.getElementById('comp-empty');
+  if (gastosMes.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = gastosMes.map(g => {
+    const montoARS = toARS(g.monto, g.moneda);
+    const parteYo = montoARS * propYo;
+    const parteOtro = montoARS * propOtro;
+    const esMio = g.cargado_por === currentUser.id;
+    return `<tr>
+      <td>${g.fecha}</td>
+      <td>${g.descripcion}</td>
+      <td>${g.categoria || '—'}</td>
+      <td>${g.moneda === 'USD' ? fmtUSD(g.monto) : fmtARS(g.monto)}</td>
+      <td style="font-size:12px;color:var(--muted)">${esMio ? 'Yo' : 'Pareja'}</td>
+      <td style="color:var(--accent)">${fmtARS(parteYo)}</td>
+      <td style="color:var(--accent2)">${fmtARS(parteOtro)}</td>
+      <td>${esMio ? `<button class="del-btn" onclick="deleteGastoCompartido('${g.id}')">🗑</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
 init();
 </script>
 </body>
