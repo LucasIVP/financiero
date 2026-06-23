@@ -963,10 +963,21 @@ function renderCompartido() {
     document.getElementById('comp-ing-otro-usd').value = otroIngreso.ingreso_usd || '';
   }
 
-  recalcProporcion();
 
-  const propYo = window._propYo ?? 0.5;
-  const propOtro = window._propOtro ?? 0.5;
+ const dolarLocal = db.config.dolar || 1;
+  const arsYoLocal = parseFloat(document.getElementById('comp-ing-yo-ars').value) || 0;
+  const usdYoLocal = parseFloat(document.getElementById('comp-ing-yo-usd').value) || 0;
+  const arsOtroLocal = parseFloat(document.getElementById('comp-ing-otro-ars').value) || 0;
+  const usdOtroLocal = parseFloat(document.getElementById('comp-ing-otro-usd').value) || 0;
+  const totalYoLocal = arsYoLocal + (usdYoLocal * dolarLocal);
+  const totalOtroLocal = arsOtroLocal + (usdOtroLocal * dolarLocal);
+  const totalAmboLocal = totalYoLocal + totalOtroLocal;
+  const propYo = totalAmboLocal > 0 ? totalYoLocal / totalAmboLocal : 0.5;
+  const propOtro = totalAmboLocal > 0 ? totalOtroLocal / totalAmboLocal : 0.5;
+  window._propYo = propYo;
+  window._propOtro = propOtro;
+
+  recalcProporcion();
 
   const total = gastosMes.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
   const totalYoPart = total * propYo;
