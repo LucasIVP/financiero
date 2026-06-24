@@ -191,8 +191,19 @@
       <div class="form-group"><label>Moneda</label><select id="g-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
       <div class="form-group"><label>Categoría</label><select id="g-cat"></select></div>
       <div class="form-group"><label>Tipo</label><select id="g-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
-      <div class="form-group"><label>Medio de pago</label><select id="g-medio"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
+      <div class="form-group" id="g-cuotas-fields" style="display:none;grid-column:1/-1">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+            <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="g-ncuotas" placeholder="12" min="1" max="60" value="1"></div>
+            <div class="form-group"><label>Mes primera cuota</label><select id="g-cuota-mes"></select></div>
+            <div class="form-group"><label>Año primera cuota</label><select id="g-cuota-anio"></select></div>
+          </div>
+          <div id="g-cuota-preview" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+        </div>
+      </div>
     </div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button class="btn btn-primary" id="btn-add-gasto" onclick="addGasto()">+ Agregar gasto</button>
@@ -580,18 +591,98 @@ function innerTab(section,tab,evt){
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
+// CUOTAS TC
+function toggleCuotasFields(prefix) {
+  const medio = document.getElementById(prefix+'-medio').value;
+  const fields = document.getElementById(prefix+'-cuotas-fields');
+  if (!fields) return;
+  if (medio === 'credito') {
+    fields.style.display = 'block';
+    fillCuotaMesAnio(prefix);
+    updateCuotaPreview(prefix);
+  } else {
+    fields.style.display = 'none';
+  }
+}
 
+function fillCuotaMesAnio(prefix) {
+  const mesEl = document.getElementById(prefix+'-cuota-mes');
+  const anioEl = document.getElementById(prefix+'-cuota-anio');
+  if (!mesEl || anioEl.options.length > 0) return;
+  const hoy = new Date();
+  // Mes siguiente como default
+  let mesNext = hoy.getMonth() + 1; // 0-indexed → siguiente
+  let anioNext = hoy.getFullYear();
+  if (mesNext > 11) { mesNext = 0; anioNext++; }
+  mesEl.innerHTML = MONTHS.map((m,i) => `<option value="${i}" ${i===mesNext?'selected':''}>${m}</option>`).join('');
+  const years = [];
+  for (let y = hoy.getFullYear(); y <= hoy.getFullYear()+3; y++) years.push(y);
+  anioEl.innerHTML = years.map(y => `<option value="${y}" ${y===anioNext?'selected':''}>${y}</option>`).join('');
+  mesEl.addEventListener('change', () => updateCuotaPreview(prefix));
+  anioEl.addEventListener('change', () => updateCuotaPreview(prefix));
+  document.getElementById(prefix+'-ncuotas').addEventListener('input', () => updateCuotaPreview(prefix));
+}
+
+function updateCuotaPreview(prefix) {
+  const monto = parseFloat(document.getElementById(prefix === 'comp' ? 'comp-monto' : 'g-monto').value) || 0;
+  const n = parseInt(document.getElementById(prefix+'-ncuotas').value) || 1;
+  const mes = parseInt(document.getElementById(prefix+'-cuota-mes').value);
+  const anio = parseInt(document.getElementById(prefix+'-cuota-anio').value);
+  const cuotaMonto = monto / n;
+  const preview = document.getElementById(prefix+'-cuota-preview');
+  if (!preview) return;
+  if (monto <= 0) { preview.textContent = 'Ingresá el monto para ver el detalle.'; return; }
+  const ultima = new Date(anio, mes + n - 1, 1);
+  preview.innerHTML = `<span style="color:var(--text)">Cuota: <strong>${fmtARS(cuotaMonto)}</strong></span> &nbsp;·&nbsp; ${n} cuota${n>1?'s':''} desde <strong>${MONTHS[mes]} ${anio}</strong> hasta <strong>${MONTHS[ultima.getMonth()]} ${ultima.getFullYear()}</strong>`;
+}
+
+function generatePlanId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8);
+    return v.toString(16);
+  });
+}
 // GASTOS
 async function addGasto(){
   const fecha=document.getElementById('g-fecha').value,desc=document.getElementById('g-desc').value.trim(),monto=parseFloat(document.getElementById('g-monto').value),moneda=document.getElementById('g-moneda').value,cat=document.getElementById('g-cat').value,tipo=document.getElementById('g-tipo').value,medio=document.getElementById('g-medio').value,notas=document.getElementById('g-notas').value.trim();
   if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
   setBtnLoading('btn-add-gasto',true);
-  const{error}=await sb.from('gastos').insert({user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas});
-  setBtnLoading('btn-add-gasto',false);
-  if(error){showToast(error.message,'error');return;}
-  await refreshTable('gastos');clearGastoForm();renderGastos();renderDashboard();showToast('Gasto agregado ✓');
+
+  if(medio==='credito'){
+    const n=parseInt(document.getElementById('g-ncuotas').value)||1;
+    const mesInicio=parseInt(document.getElementById('g-cuota-mes').value);
+    const anioInicio=parseInt(document.getElementById('g-cuota-anio').value);
+    const cuotaMonto=Math.round(monto/n*100)/100;
+    const planId=generatePlanId();
+    const rows=[];
+    for(let i=0;i<n;i++){
+      let m=mesInicio+i, y=anioInicio;
+      while(m>11){m-=12;y++;}
+      const fechaCuota=`${y}-${String(m+1).padStart(2,'0')}-01`;
+      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId});
+    }
+    const{error}=await sb.from('gastos').insert(rows);
+    setBtnLoading('btn-add-gasto',false);
+    if(error){showToast(error.message,'error');return;}
+    showToast(`${n} cuota${n>1?'s':''} agregadas ✓`);
+  } else {
+    const{error}=await sb.from('gastos').insert({user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas});
+    setBtnLoading('btn-add-gasto',false);
+    if(error){showToast(error.message,'error');return;}
+    showToast('Gasto agregado ✓');
+  }
+  await refreshTable('gastos');clearGastoForm();toggleCuotasFields('g');renderGastos();renderDashboard();
 }
-function clearGastoForm(){document.getElementById('g-desc').value='';document.getElementById('g-monto').value='';document.getElementById('g-notas').value='';}
+function clearGastoForm(){
+  document.getElementById('g-desc').value='';
+  document.getElementById('g-monto').value='';
+  document.getElementById('g-notas').value='';
+  document.getElementById('g-medio').value='efectivo';
+  const fields=document.getElementById('g-cuotas-fields');
+  if(fields)fields.style.display='none';
+  const ncuotas=document.getElementById('g-ncuotas');
+  if(ncuotas)ncuotas.value='1';
+}
 async function deleteGasto(id){const{error}=await sb.from('gastos').delete().eq('id',id);if(error){showToast(error.message,'error');return;}db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();showToast('Eliminado');}
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
