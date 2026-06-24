@@ -304,6 +304,7 @@
     <button class="inner-tab active" onclick="innerTab('tarjetas','calendario',event)">📅 Calendario del mes</button>
     <button class="inner-tab" onclick="innerTab('tarjetas','cuotas-activas',event)">💳 Cuotas activas</button>
     <button class="inner-tab" onclick="innerTab('tarjetas','mis-tarjetas',event)">⚙️ Mis tarjetas</button>
+    <button class="inner-tab" onclick="innerTab('tarjetas','prestamos',event)">💸 Préstamos</button>
   </div>
 
   <!-- Tab: Calendario -->
@@ -334,6 +335,30 @@
       </div>
     </div>
     <div id="tc-tarjetas-list"></div>
+  </div>
+  <!-- Tab: Préstamos a terceros -->
+  <div id="tarjetas-prestamos" class="inner-section">
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-weight:600;margin-bottom:14px">💸 Nuevo préstamo de tarjeta</div>
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+        <div class="form-group"><label>Descripción</label><input type="text" id="pt-desc" placeholder="Ej: Notebook Samsung"></div>
+        <div class="form-group"><label>Persona</label><input type="text" id="pt-persona" placeholder="Ej: Mamá"></div>
+        <div class="form-group"><label>Monto total</label><input type="number" id="pt-monto" placeholder="0" oninput="updatePTPreview()"></div>
+        <div class="form-group"><label>Moneda</label><select id="pt-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+        <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="pt-ncuotas" placeholder="12" min="1" max="60" oninput="updatePTPreview()"></div>
+        <div class="form-group"><label>Mes primera cuota</label><select id="pt-mes-inicio" onchange="updatePTPreview()"></select></div>
+        <div class="form-group"><label>Año primera cuota</label><select id="pt-anio-inicio" onchange="updatePTPreview()"></select></div>
+        <div class="form-group"><label>Tarjeta usada</label><select id="pt-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
+        <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="pt-notas" placeholder="Opcional"></div>
+      </div>
+      <div id="pt-preview" style="margin:10px 0;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted)"></div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <button class="btn btn-primary" id="btn-add-prestamo" onclick="addPrestamo()">+ Registrar préstamo</button>
+        <button class="btn btn-ghost" onclick="clearPTForm()">Limpiar</button>
+      </div>
+    </div>
+    <div class="grid-3" id="pt-kpis" style="margin-bottom:20px"></div>
+    <div id="pt-lista"></div>
   </div>
 </div>
 
@@ -604,6 +629,7 @@ function emptyDB() {
   return {
     gastos:[],ingresos:[],cuotas:[],inversiones:[],
     activos:[],deudas:[],patrimonioHistory:[],tarjetas:[],
+    prestamos:[],prestamosCuotas:[],
     categorias:defaultCategories(),
     config:{dolar:1400,dolar_fecha:'',obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30}
   };
@@ -672,7 +698,7 @@ async function loadAllData(){
   setLoading(true,'Cargando tus datos...');
   const uid=currentUser.id;
   try{
-    const[g,i,c,inv,act,deu,cfg,cat,ph,tc]=await Promise.all([
+    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc]=await Promise.all([
       sb.from('gastos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('ingresos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('cuotas').select('*').eq('user_id',uid),
@@ -683,6 +709,8 @@ async function loadAllData(){
       sb.from('categorias').select('*').eq('user_id',uid).order('orden'),
       sb.from('patrimonio_history').select('*').eq('user_id',uid).order('mes'),
       sb.from('tarjetas').select('*').eq('user_id',uid).order('created_at'),
+      sb.from('prestamos_tc').select('*').eq('user_id',uid).order('created_at'),
+      sb.from('prestamos_cuotas').select('*').eq('user_id',uid).order('fecha'),
     ]);
     db.gastos=(g.data||[]).map(x=>({...x,desc:x.descripcion}));
     db.ingresos=i.data||[];
@@ -692,6 +720,8 @@ async function loadAllData(){
     db.deudas=deu.data||[];
     db.patrimonioHistory=ph.data||[];
     db.tarjetas=tc.data||[];
+    db.prestamos=pt.data||[];
+    db.prestamosCuotas=ptc.data||[];
     if(!cfg.data){
       const defaults={user_id:uid,dolar:1400,dolar_fecha:new Date().toISOString().slice(0,10),obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30};
       await sb.from('config').insert(defaults);db.config=defaults;
@@ -745,7 +775,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:renderTarjetas,inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -937,6 +967,10 @@ function populateTarjetaSelects() {
   if (!sel) return;
   sel.innerHTML = '<option value="">— Sin asignar —</option>' +
     (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre} (${t.banco || t.red})</option>`).join('');
+  // Also populate prestamo tarjeta select
+  const ptSel = document.getElementById('pt-tarjeta-id');
+  if (ptSel) ptSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
 }
 
 function renderTarjetas() {
@@ -1757,6 +1791,196 @@ function renderVaquita() {
     </tr>`;
   }).join('');
 }
+
+// ============================================================
+// PRÉSTAMOS DE TARJETA A TERCEROS
+// ============================================================
+
+function initPTSelects() {
+  const mesEl = document.getElementById('pt-mes-inicio');
+  const anioEl = document.getElementById('pt-anio-inicio');
+  if (!mesEl || mesEl.options.length > 0) return;
+  const hoy = new Date();
+  let nextM = hoy.getMonth() + 1, nextY = hoy.getFullYear();
+  if (nextM > 11) { nextM = 0; nextY++; }
+  mesEl.innerHTML = MONTHS.map((m,i) => `<option value="${i}" ${i===nextM?'selected':''}>${m}</option>`).join('');
+  const years = []; for (let y=hoy.getFullYear(); y<=hoy.getFullYear()+4; y++) years.push(y);
+  anioEl.innerHTML = years.map(y => `<option value="${y}" ${y===nextY?'selected':''}>${y}</option>`).join('');
+  mesEl.addEventListener('change', updatePTPreview);
+  anioEl.addEventListener('change', updatePTPreview);
+}
+
+function updatePTPreview() {
+  const monto = parseFloat(document.getElementById('pt-monto').value) || 0;
+  const n = parseInt(document.getElementById('pt-ncuotas').value) || 0;
+  const mes = parseInt(document.getElementById('pt-mes-inicio').value);
+  const anio = parseInt(document.getElementById('pt-anio-inicio').value);
+  const prev = document.getElementById('pt-preview');
+  if (!prev) return;
+  if (!n || !monto) { prev.textContent = 'Ingresá monto y cuotas para ver el detalle.'; return; }
+  const cuotaMonto = monto / n;
+  const ultima = new Date(anio, mes + n - 1, 1);
+  prev.innerHTML = `Cuota: <strong>${fmtARS(cuotaMonto)}</strong> · ${n} cuotas desde <strong>${MONTHS[mes]} ${anio}</strong> hasta <strong>${MONTHS[ultima.getMonth()]} ${ultima.getFullYear()}</strong>`;
+}
+
+function clearPTForm() {
+  ['pt-desc','pt-persona','pt-monto','pt-notas'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  const ncuotas = document.getElementById('pt-ncuotas'); if(ncuotas) ncuotas.value='';
+  const prev = document.getElementById('pt-preview'); if(prev) prev.textContent='';
+}
+
+async function addPrestamo() {
+  const desc = document.getElementById('pt-desc').value.trim();
+  const persona = document.getElementById('pt-persona').value.trim();
+  const monto = parseFloat(document.getElementById('pt-monto').value);
+  const moneda = document.getElementById('pt-moneda').value;
+  const ncuotas = parseInt(document.getElementById('pt-ncuotas').value);
+  const mesInicio = parseInt(document.getElementById('pt-mes-inicio').value);
+  const anioInicio = parseInt(document.getElementById('pt-anio-inicio').value);
+  const tarjetaId = document.getElementById('pt-tarjeta-id').value || null;
+  const notas = document.getElementById('pt-notas').value.trim();
+
+  if (!desc || !persona || isNaN(monto) || monto <= 0 || !ncuotas || ncuotas < 1) {
+    showToast('Completá descripción, persona, monto y cuotas.', 'error'); return;
+  }
+
+  const mesInicioStr = `${anioInicio}-${String(mesInicio+1).padStart(2,'0')}`;
+  setBtnLoading('btn-add-prestamo', true);
+
+  // Insert prestamo header
+  const { data: ptData, error: ptErr } = await sb.from('prestamos_tc')
+    .insert({ user_id: currentUser.id, descripcion: desc, persona, tarjeta_id: tarjetaId, monto, moneda, ncuotas, mes_inicio: mesInicioStr, notas })
+    .select().single();
+
+  if (ptErr) { showToast('Error: ' + ptErr.message, 'error'); setBtnLoading('btn-add-prestamo', false); return; }
+
+  // Insert cuotas
+  const cuotaMonto = Math.round(monto / ncuotas * 100) / 100;
+  const rows = [];
+  for (let i = 0; i < ncuotas; i++) {
+    let m = mesInicio + i, y = anioInicio;
+    while (m > 11) { m -= 12; y++; }
+    rows.push({ prestamo_id: ptData.id, user_id: currentUser.id, cuota_num: i+1, cuota_total: ncuotas, monto: cuotaMonto, moneda, fecha: `${y}-${String(m+1).padStart(2,'0')}-01`, cobrada: false });
+  }
+
+  const { error: cuotasErr } = await sb.from('prestamos_cuotas').insert(rows);
+  setBtnLoading('btn-add-prestamo', false);
+  if (cuotasErr) { showToast('Error al generar cuotas: ' + cuotasErr.message, 'error'); return; }
+
+  db.prestamos.push(ptData);
+  const { data: newCuotas } = await sb.from('prestamos_cuotas').select('*').eq('prestamo_id', ptData.id).order('fecha');
+  db.prestamosCuotas.push(...(newCuotas||[]));
+
+  clearPTForm();
+  renderPrestamos();
+  showToast(`Préstamo registrado — ${ncuotas} cuotas ✓`);
+}
+
+async function cobrarCuota(cuotaId) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await sb.from('prestamos_cuotas').update({ cobrada: true, fecha_cobro: hoy }).eq('id', cuotaId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  const c = db.prestamosCuotas.find(x => x.id === cuotaId);
+  if (c) { c.cobrada = true; c.fecha_cobro = hoy; }
+  renderPrestamos();
+  showToast('Cuota cobrada ✓');
+}
+
+async function deletePrestamo(prestamoId) {
+  if (!confirm('¿Eliminar este préstamo y todas sus cuotas?')) return;
+  const { error } = await sb.from('prestamos_tc').delete().eq('id', prestamoId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  db.prestamos = db.prestamos.filter(p => p.id !== prestamoId);
+  db.prestamosCuotas = db.prestamosCuotas.filter(c => c.prestamo_id !== prestamoId);
+  renderPrestamos();
+  showToast('Préstamo eliminado');
+}
+
+function renderPrestamos() {
+  initPTSelects();
+  const hoyYM = new Date().toISOString().slice(0, 7);
+
+  // KPIs
+  const pendientesMes = db.prestamosCuotas.filter(c => !c.cobrada && c.fecha.slice(0,7) === hoyYM);
+  const totalPendiente = pendientesMes.reduce((s,c) => s + toARS(c.monto, c.moneda), 0);
+  const totalPrestado = db.prestamosCuotas.filter(c => !c.cobrada).reduce((s,c) => s + toARS(c.monto, c.moneda), 0);
+  const nPersonas = [...new Set(db.prestamos.filter(p => db.prestamosCuotas.some(c => c.prestamo_id === p.id && !c.cobrada)).map(p => p.persona))].length;
+
+  document.getElementById('pt-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Por cobrar este mes</div><div class="card-value" style="color:var(--warn)">${fmtARS(totalPendiente)}</div><div class="card-sub">${pendientesMes.length} cuota${pendientesMes.length!==1?'s':''}</div></div>
+    <div class="card"><div class="card-title">Total prestado pendiente</div><div class="card-value" style="color:var(--accent)">${fmtARS(totalPrestado)}</div></div>
+    <div class="card"><div class="card-title">Personas activas</div><div class="card-value">${nPersonas}</div></div>`;
+
+  // Group by persona
+  const porPersona = {};
+  db.prestamos.forEach(p => {
+    const cuotas = db.prestamosCuotas.filter(c => c.prestamo_id === p.id);
+    const pendientes = cuotas.filter(c => !c.cobrada);
+    if (pendientes.length === 0) return; // préstamo saldado, no mostrar
+    if (!porPersona[p.persona]) porPersona[p.persona] = [];
+    porPersona[p.persona].push({ prestamo: p, cuotas, pendientes });
+  });
+
+  const lista = document.getElementById('pt-lista');
+  if (Object.keys(porPersona).length === 0) {
+    lista.innerHTML = '<div class="empty-state">No hay préstamos activos</div>'; return;
+  }
+
+  lista.innerHTML = Object.entries(porPersona).map(([persona, items]) => {
+    const tarjetaNombre = (tarjetaId) => db.tarjetas.find(t => t.id === tarjetaId)?.nombre || '—';
+    const itemsHTML = items.map(({ prestamo, cuotas, pendientes }) => {
+      const cobradas = cuotas.filter(c => c.cobrada).length;
+      const pct = Math.round(cobradas / cuotas.length * 100);
+      const color = db.tarjetas.find(t => t.id === prestamo.tarjeta_id)?.color || 'var(--accent)';
+      const cuotasMes = cuotas.filter(c => c.fecha.slice(0,7) === hoyYM);
+
+      const cuotasHTML = cuotas.map(c => {
+        const esMes = c.fecha.slice(0,7) === hoyYM;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="min-width:80px;font-size:12px;color:var(--muted)">${c.fecha.slice(0,7)}</div>
+          <div style="flex:1;font-size:13px">Cuota ${String(c.cuota_num).padStart(2,'0')}/${String(c.cuota_total).padStart(2,'0')}</div>
+          <div style="font-weight:600;font-size:13px;min-width:90px;text-align:right">${c.moneda==='USD'?fmtUSD(c.monto):fmtARS(c.monto)}</div>
+          <div style="min-width:110px;text-align:right">
+            ${c.cobrada
+              ? `<span style="font-size:12px;color:var(--green)">✓ ${c.fecha_cobro||''}</span>`
+              : `<button class="btn btn-success" style="padding:4px 10px;font-size:12px" onclick="cobrarCuota('${c.id}')">✓ Cobrar</button>`}
+          </div>
+        </div>`;
+      }).join('');
+
+      return `<div class="cuota-card" style="border-left:3px solid ${color};margin-bottom:12px">
+        <div class="cuota-header">
+          <div>
+            <span class="cuota-name">${prestamo.descripcion}</span>
+            <span style="font-size:12px;color:var(--muted);margin-left:8px">${tarjetaNombre(prestamo.tarjeta_id)}</span>
+          </div>
+          <button class="del-btn" onclick="deletePrestamo('${prestamo.id}')">🗑</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+          ${prestamo.moneda==='USD'?fmtUSD(prestamo.monto/prestamo.ncuotas):fmtARS(prestamo.monto/prestamo.ncuotas)}/mes · Total: ${prestamo.moneda==='USD'?fmtUSD(prestamo.monto):fmtARS(prestamo.monto)}
+          ${cuotasMes.length > 0 ? `· <span style="color:var(--warn);font-weight:600">Cuota de este mes: ${cuotasMes[0].cobrada?'✓ Cobrada':'pendiente'}</span>` : ''}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;color:var(--muted)">
+          <span>${cobradas}/${cuotas.length} cobradas</span>
+          <span>Hasta ${cuotas[cuotas.length-1].fecha.slice(0,7)}</span>
+        </div>
+        <div class="progress-wrap" style="margin-bottom:12px"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>
+        <details style="font-size:13px">
+          <summary style="cursor:pointer;color:var(--muted);margin-bottom:8px">Ver todas las cuotas</summary>
+          ${cuotasHTML}
+        </details>
+      </div>`;
+    }).join('');
+
+    return `<div class="card" style="margin-bottom:20px">
+      <div style="font-weight:700;font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:20px">👤</span> ${persona}
+      </div>
+      ${itemsHTML}
+    </div>`;
+  }).join('');
+}
+
 init();
 </script>
 </body>
