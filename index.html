@@ -697,12 +697,35 @@ async function loadAllData(){
       await sb.from('categorias').insert(defs);db.categorias=defs;
     }else{db.categorias=cat.data;}
     setLoading(false);
+    // Auto-actualizar dólar MEP al cargar (silencioso si falla)
+    fetchDolarMEP().catch(()=>{});
   }catch(err){
     setLoading(false);
     console.error('Error cargando datos:',err);
     showToast('Error al cargar datos: '+err.message,'error');
     throw err;
   }
+}
+async function fetchDolarMEP(){
+  try{
+    const res=await fetch('https://dolarapi.com/v1/dolares/mep');
+    if(!res.ok)return;
+    const data=await res.json();
+    const venta=data?.venta;
+    if(!venta||isNaN(venta))return;
+    const hoy=new Date().toISOString().slice(0,10);
+    db.config.dolar=venta;
+    db.config.dolar_fecha=hoy;
+    await sb.from('config').upsert({user_id:currentUser.id,dolar:venta,dolar_fecha:hoy},{onConflict:'user_id'});
+    const badge=document.getElementById('dolar-val');
+    if(badge)badge.textContent=venta.toLocaleString('es-AR');
+    const cfgInput=document.getElementById('cfg-dolar');
+    if(cfgInput&&document.activeElement!==cfgInput){
+      cfgInput.value=venta;
+      const fechaInput=document.getElementById('cfg-dolar-fecha');
+      if(fechaInput)fechaInput.value=hoy;
+    }
+  }catch(e){console.warn('fetchDolarMEP falló:',e);}
 }
 async function refreshTable(table){
   const uid=currentUser.id;
@@ -718,7 +741,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{fillMonthYearSelects('tc-month','tc-year');renderTarjetas();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:renderTarjetas,inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -913,7 +936,8 @@ function populateTarjetaSelects() {
 }
 
 function renderTarjetas() {
-  fillMonthYearSelects('tc-month', 'tc-year');
+  const ms = document.getElementById('tc-month');
+  if (!ms || ms.options.length === 0) fillMonthYearSelects('tc-month', 'tc-year');
   const { month, year } = getSelectedMonthYear('tc-month', 'tc-year');
 
   // Planes de cuotas activos: gastos con plan_id agrupados
