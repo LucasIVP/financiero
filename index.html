@@ -178,44 +178,84 @@
 </div>
 
 <div id="page-gastos" class="page">
-  <div class="section-header">
+  <div class="section-header" style="margin-bottom:4px">
     <div class="section-title">💸 Gastos</div>
-    <div class="month-selector"><select id="g-month" onchange="renderGastos()"></select><select id="g-year" onchange="renderGastos()"></select></div>
   </div>
-  <div class="card" style="margin-bottom:20px">
-    <div style="font-weight:600;margin-bottom:14px">Nuevo gasto</div>
-    <div class="form-grid">
-      <div class="form-group"><label>Fecha</label><input type="date" id="g-fecha"></div>
-      <div class="form-group"><label>Descripción</label><input type="text" id="g-desc" placeholder="Ej: Supermercado"></div>
-      <div class="form-group"><label>Monto</label><input type="number" id="g-monto" placeholder="0" min="0"></div>
-      <div class="form-group"><label>Moneda</label><select id="g-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-      <div class="form-group"><label>Categoría</label><select id="g-cat"></select></div>
-      <div class="form-group"><label>Tipo</label><select id="g-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
-      <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
-      <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
-      <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
-      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
-      <div class="form-group" id="g-cuotas-fields" style="display:none;grid-column:1/-1">
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-          <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-            <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="g-ncuotas" placeholder="12" min="1" max="60" value="1"></div>
-            <div class="form-group"><label>Mes primera cuota</label><select id="g-cuota-mes"></select></div>
-            <div class="form-group"><label>Año primera cuota</label><select id="g-cuota-anio"></select></div>
+
+  <!-- Inner tabs -->
+  <div class="inner-tabs">
+    <button class="inner-tab active" onclick="innerTab('gastos','gastos-mes',event)">📋 Mes</button>
+    <button class="inner-tab" onclick="innerTab('gastos','gastos-historial',event)">📅 Historial</button>
+  </div>
+
+  <!-- Tab: Mes -->
+  <div id="gastos-gastos-mes" class="inner-section active">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <div class="month-selector"><select id="g-month" onchange="renderGastos()"></select><select id="g-year" onchange="renderGastos()"></select></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-weight:600;margin-bottom:14px">Nuevo gasto</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Fecha</label><input type="date" id="g-fecha"></div>
+        <div class="form-group"><label>Descripción</label><input type="text" id="g-desc" placeholder="Ej: Supermercado"></div>
+        <div class="form-group"><label>Monto</label><input type="number" id="g-monto" placeholder="0" min="0"></div>
+        <div class="form-group"><label>Moneda</label><select id="g-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+        <div class="form-group"><label>Categoría</label><select id="g-cat"></select></div>
+        <div class="form-group"><label>Tipo</label><select id="g-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
+        <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+        <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
+        <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
+        <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
+        <div class="form-group" id="g-cuotas-fields" style="display:none;grid-column:1/-1">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+              <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="g-ncuotas" placeholder="12" min="1" max="60" value="1"></div>
+              <div class="form-group"><label>Mes primera cuota</label><select id="g-cuota-mes"></select></div>
+              <div class="form-group"><label>Año primera cuota</label><select id="g-cuota-anio"></select></div>
+            </div>
+            <div id="g-cuota-preview" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
           </div>
-          <div id="g-cuota-preview" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
         </div>
       </div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <button class="btn btn-primary" id="btn-add-gasto" onclick="addGasto()">+ Agregar gasto</button>
+        <button class="btn btn-ghost" onclick="clearGastoForm()">Limpiar</button>
+      </div>
     </div>
-    <div style="margin-top:14px;display:flex;gap:10px">
-      <button class="btn btn-primary" id="btn-add-gasto" onclick="addGasto()">+ Agregar gasto</button>
-      <button class="btn btn-ghost" onclick="clearGastoForm()">Limpiar</button>
+    <div class="card">
+      <div class="section-header"><span style="font-weight:600" id="g-table-title">Lista de gastos</span><span id="g-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th></th></tr></thead><tbody id="g-table-body"></tbody></table></div>
+      <div id="g-empty" class="empty-state" style="display:none">No hay gastos este mes</div>
     </div>
   </div>
-  <div class="card">
-    <div class="section-header"><span style="font-weight:600" id="g-table-title">Lista de gastos</span><span id="g-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th></th></tr></thead><tbody id="g-table-body"></tbody></table></div>
-    <div id="g-empty" class="empty-state" style="display:none">No hay gastos este mes</div>
+
+  <!-- Tab: Historial -->
+  <div id="gastos-gastos-historial" class="inner-section">
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-weight:600;margin-bottom:14px">📅 Filtrar por período</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group"><label>Desde</label>
+          <div style="display:flex;gap:6px">
+            <select id="h-desde-month" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"></select>
+            <select id="h-desde-year" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"></select>
+          </div>
+        </div>
+        <div class="form-group"><label>Hasta</label>
+          <div style="display:flex;gap:6px">
+            <select id="h-hasta-month" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"></select>
+            <select id="h-hasta-year" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"></select>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="renderHistorial()">Ver historial</button>
+      </div>
+    </div>
+    <div id="h-kpis" class="grid-3" style="margin-bottom:20px"></div>
+    <div class="card">
+      <div class="section-header"><span style="font-weight:600" id="h-table-title">Historial</span><span id="h-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th>Acción</th></tr></thead><tbody id="h-table-body"></tbody></table></div>
+      <div id="h-empty" class="empty-state" style="display:none">Sin gastos en el período seleccionado</div>
+    </div>
   </div>
 </div>
 
@@ -426,6 +466,28 @@
 
 <!-- MODALS -->
 
+<div class="modal-overlay" id="modal-convertir-tc">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">💳 Convertir a plan de cuotas</span><button class="modal-close" onclick="closeModal('modal-convertir-tc')">×</button></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Este gasto se va a dividir en cuotas mensuales a partir del mes que elijas.</p>
+    <input type="hidden" id="conv-gasto-id">
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group" style="grid-column:1/-1"><label>Descripción</label><input type="text" id="conv-desc" readonly style="opacity:0.7"></div>
+      <div class="form-group"><label>Monto total</label><input type="number" id="conv-monto" placeholder="0"></div>
+      <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="conv-ncuotas" placeholder="12" min="1" max="60" oninput="updateConvPreview()"></div>
+      <div class="form-group"><label>Mes primera cuota</label><select id="conv-mes-inicio" onchange="updateConvPreview()"></select></div>
+      <div class="form-group"><label>Año primera cuota</label><select id="conv-anio-inicio" onchange="updateConvPreview()"></select></div>
+      <div class="form-group"><label>Tarjeta</label><select id="conv-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
+      <div class="form-group"><label>Compartido</label><select id="conv-compartido"><option value="false">No</option><option value="true">Sí</option></select></div>
+    </div>
+    <div id="conv-preview" style="margin:12px 0;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted)"></div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-convertir-tc')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-conv-tc" onclick="convertirTC()">Convertir</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-inversion">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">Inversión / activo financiero</span><button class="modal-close" onclick="closeModal('modal-inversion')">×</button></div>
@@ -610,7 +672,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:renderGastos,ingresos:renderIngresos,tarjetas:()=>{fillMonthYearSelects('tc-month','tc-year');renderTarjetas();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{fillMonthYearSelects('tc-month','tc-year');renderTarjetas();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -984,6 +1046,172 @@ async function deletePlanCuotas(planId) {
   renderGastos();
   renderDashboard();
   showToast('Plan eliminado ✓');
+}
+
+// HISTORIAL DE GASTOS
+function initHistorialSelects() {
+  const hoy = new Date();
+  const month = hoy.getMonth(), year = hoy.getFullYear();
+  ['h-desde-month','h-hasta-month'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.options.length === 0)
+      el.innerHTML = MONTHS.map((m,i) => `<option value="${i}" ${i===0?'selected':''}>${m}</option>`).join('');
+  });
+  ['h-desde-year','h-hasta-year'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.options.length === 0) {
+      const years = [];
+      for (let y = year-3; y <= year+1; y++) years.push(y);
+      el.innerHTML = years.map(y => `<option value="${y}" ${y===year?'selected':''}>${y}</option>`).join('');
+    }
+  });
+  // Default: desde enero del año actual hasta mes actual
+  const desdeM = document.getElementById('h-desde-month');
+  if (desdeM) desdeM.value = '0';
+}
+
+function renderHistorial() {
+  const desdeM = parseInt(document.getElementById('h-desde-month').value);
+  const desdeY = parseInt(document.getElementById('h-desde-year').value);
+  const hastaM = parseInt(document.getElementById('h-hasta-month').value);
+  const hastaY = parseInt(document.getElementById('h-hasta-year').value);
+
+  const desdeDate = new Date(desdeY, desdeM, 1);
+  const hastaDate = new Date(hastaY, hastaM + 1, 0);
+
+  const gastos = db.gastos.filter(g => {
+    const d = new Date(g.fecha + 'T12:00:00');
+    return d >= desdeDate && d <= hastaDate;
+  }).sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  document.getElementById('h-table-title').textContent =
+    `${MONTHS[desdeM]} ${desdeY} — ${MONTHS[hastaM]} ${hastaY}`;
+
+  const total = gastos.reduce((s, g) => s + gastoEfectivo(g, new Date(g.fecha+'T12:00:00').getMonth(), new Date(g.fecha+'T12:00:00').getFullYear()), 0);
+  const porCat = {};
+  gastos.forEach(g => { const v = gastoEfectivo(g, new Date(g.fecha+'T12:00:00').getMonth(), new Date(g.fecha+'T12:00:00').getFullYear()); porCat[g.cat]=(porCat[g.cat]||0)+v; });
+  const topCat = Object.entries(porCat).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('h-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Total del período</div><div class="card-value amount-negative">${fmtARS(total)}</div><div class="card-sub">${gastos.length} movimientos</div></div>
+    <div class="card"><div class="card-title">Promedio mensual</div><div class="card-value">${fmtARS(total / Math.max(1,(hastaY-desdeY)*12+(hastaM-desdeM)+1))}</div></div>
+    <div class="card"><div class="card-title">Mayor categoría</div><div class="card-value" style="font-size:18px">${topCat ? topCat[0] : '—'}</div><div class="card-sub">${topCat ? fmtARS(topCat[1]) : ''}</div></div>`;
+
+  document.getElementById('h-total-badge').textContent = gastos.length > 0 ? `Total: ${fmtARS(total)}` : '';
+  const tbody = document.getElementById('h-table-body');
+  const empty = document.getElementById('h-empty');
+  if (gastos.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  const tc = {regular:'#6c63ff',inusual:'#ffb347',ahorro:'#00d4aa'};
+  tbody.innerHTML = gastos.map(g => {
+    const cat = db.categorias.find(c => c.name === g.cat) || {emoji:'📄', name: g.cat||'Sin cat.'};
+    const d = new Date(g.fecha+'T12:00:00');
+    const montoEf = gastoEfectivo(g, d.getMonth(), d.getFullYear());
+    const esCreditoSinPlan = g.medio === 'credito' && !g.plan_id;
+    const accion = esCreditoSinPlan
+      ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="abrirConvertirTC('${g.id}')">✏️ Cuotas</button>`
+      : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</span>` : '<button class="del-btn" onclick="deleteGasto(''+g.id+'')">🗑</button>');
+    return `<tr>
+      <td style="color:var(--muted)">${g.fecha}</td>
+      <td><div style="font-weight:500">${g.desc||g.descripcion}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}</td>
+      <td><span class="tag">${cat.emoji} ${cat.name}</span></td>
+      <td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td>
+      <td style="color:var(--muted)">${g.medio}</td>
+      <td class="amount-negative" style="font-weight:600;white-space:nowrap">${fmtARS(montoEf)}</td>
+      <td>${accion}</td>
+    </tr>`;
+  }).join('');
+}
+
+// CONVERTIR GASTO TC EXISTENTE A PLAN DE CUOTAS
+function abrirConvertirTC(gastoId) {
+  const g = db.gastos.find(x => x.id === gastoId);
+  if (!g) return;
+  document.getElementById('conv-gasto-id').value = gastoId;
+  document.getElementById('conv-desc').value = g.desc || g.descripcion;
+  document.getElementById('conv-monto').value = g.monto;
+  document.getElementById('conv-compartido').value = g.es_compartido ? 'true' : 'false';
+
+  // Fill mes/anio selects
+  const hoy = new Date();
+  const mesEl = document.getElementById('conv-mes-inicio');
+  const anioEl = document.getElementById('conv-anio-inicio');
+  mesEl.innerHTML = MONTHS.map((m,i) => `<option value="${i}" ${i===hoy.getMonth()+1>11?0:hoy.getMonth()+1?'selected':''}>${m}</option>`).join('');
+  const years = []; for (let y=hoy.getFullYear(); y<=hoy.getFullYear()+3; y++) years.push(y);
+  anioEl.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  // Default: next month
+  let nextM = hoy.getMonth()+1; let nextY = hoy.getFullYear();
+  if (nextM > 11) { nextM=0; nextY++; }
+  mesEl.value = nextM; anioEl.value = nextY;
+
+  // Fill tarjeta select
+  const tSel = document.getElementById('conv-tarjeta-id');
+  tSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (db.tarjetas||[]).map(t => `<option value="${t.id}" ${t.id===g.tarjeta_id?'selected':''}>${t.nombre}</option>`).join('');
+
+  document.getElementById('conv-ncuotas').value = '';
+  updateConvPreview();
+  openModal('modal-convertir-tc');
+}
+
+function updateConvPreview() {
+  const monto = parseFloat(document.getElementById('conv-monto').value) || 0;
+  const n = parseInt(document.getElementById('conv-ncuotas').value) || 0;
+  const mes = parseInt(document.getElementById('conv-mes-inicio').value);
+  const anio = parseInt(document.getElementById('conv-anio-inicio').value);
+  const prev = document.getElementById('conv-preview');
+  if (!n || !monto) { prev.textContent = 'Ingresá cantidad de cuotas para ver el detalle.'; return; }
+  const cuotaMonto = monto / n;
+  const ultima = new Date(anio, mes + n - 1, 1);
+  prev.innerHTML = `Cuota: <strong>${fmtARS(cuotaMonto)}</strong> · ${n} cuotas desde <strong>${MONTHS[mes]} ${anio}</strong> hasta <strong>${MONTHS[ultima.getMonth()]} ${ultima.getFullYear()}</strong>`;
+}
+
+async function convertirTC() {
+  const gastoId = document.getElementById('conv-gasto-id').value;
+  const g = db.gastos.find(x => x.id === gastoId);
+  if (!g) return;
+  const n = parseInt(document.getElementById('conv-ncuotas').value);
+  const mesInicio = parseInt(document.getElementById('conv-mes-inicio').value);
+  const anioInicio = parseInt(document.getElementById('conv-anio-inicio').value);
+  const tarjetaId = document.getElementById('conv-tarjeta-id').value || null;
+  const esCompartido = document.getElementById('conv-compartido').value === 'true';
+  const monto = parseFloat(document.getElementById('conv-monto').value);
+  if (!n || n < 1) { showToast('Ingresá la cantidad de cuotas', 'error'); return; }
+
+  setBtnLoading('btn-conv-tc', true);
+
+  // Delete original gasto
+  const { error: delErr } = await sb.from('gastos').delete().eq('id', gastoId);
+  if (delErr) { showToast('Error: ' + delErr.message, 'error'); setBtnLoading('btn-conv-tc', false); return; }
+
+  // Insert N cuotas
+  const planId = generatePlanId();
+  const cuotaMonto = Math.round(monto / n * 100) / 100;
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    let m = mesInicio + i, y = anioInicio;
+    while (m > 11) { m -= 12; y++; }
+    const fechaCuota = `${y}-${String(m+1).padStart(2,'0')}-01`;
+    rows.push({
+      user_id: currentUser.id,
+      fecha: fechaCuota,
+      descripcion: `${g.desc||g.descripcion} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,
+      monto: cuotaMonto, moneda: g.moneda, cat: g.cat, tipo: g.tipo,
+      medio: 'credito', notas: g.notas,
+      cuota_num: i+1, cuota_total: n, cuota_monto: cuotaMonto,
+      plan_id: planId, es_compartido: esCompartido, tarjeta_id: tarjetaId
+    });
+  }
+  const { error } = await sb.from('gastos').insert(rows);
+  setBtnLoading('btn-conv-tc', false);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+
+  await refreshTable('gastos');
+  closeModal('modal-convertir-tc');
+  renderHistorial();
+  renderTarjetas();
+  renderDashboard();
+  showToast(`${n} cuotas generadas ✓`);
 }
 
 // INVERSIONES
