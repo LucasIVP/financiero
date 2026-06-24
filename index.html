@@ -466,6 +466,52 @@
 
 <!-- MODALS -->
 
+<div class="modal-overlay" id="modal-edit-gasto">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">✏️ Editar gasto</span><button class="modal-close" onclick="closeModal('modal-edit-gasto')">×</button></div>
+    <input type="hidden" id="eg-id">
+    <input type="hidden" id="eg-plan-id">
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group"><label>Fecha</label><input type="date" id="eg-fecha"></div>
+      <div class="form-group"><label>Descripción</label><input type="text" id="eg-desc"></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="eg-monto" placeholder="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="eg-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Categoría</label><select id="eg-cat"></select></div>
+      <div class="form-group"><label>Tipo</label><select id="eg-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="eg-medio"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group"><label>Tarjeta</label><select id="eg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eg-notas" placeholder="Opcional"></div>
+      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
+    </div>
+    <div id="eg-plan-note" style="display:none;margin:10px 0;padding:10px;background:rgba(108,99,255,0.1);border-radius:8px;font-size:12px;color:var(--accent)">
+      💳 Este gasto forma parte de un plan de cuotas. Los cambios de tarjeta y compartido se aplicarán a <strong>todas las cuotas del plan</strong>.
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-gasto')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-gasto" onclick="saveEditGasto()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-edit-ingreso">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">✏️ Editar ingreso</span><button class="modal-close" onclick="closeModal('modal-edit-ingreso')">×</button></div>
+    <input type="hidden" id="ei-id">
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group"><label>Fecha</label><input type="date" id="ei-fecha"></div>
+      <div class="form-group"><label>Fuente</label><input type="text" id="ei-fuente" placeholder="Ej: Trabajo"></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="ei-monto" placeholder="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="ei-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Tipo</label><select id="ei-tipo"><option value="trabajo">Trabajo</option><option value="freelance">Freelance</option><option value="inversiones">Inversiones</option><option value="renta">Renta</option><option value="otro">Otro</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="ei-notas" placeholder="Opcional"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-ingreso')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-ingreso" onclick="saveEditIngreso()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-convertir-tc">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">💳 Convertir a plan de cuotas</span><button class="modal-close" onclick="closeModal('modal-convertir-tc')">×</button></div>
@@ -798,7 +844,7 @@ function renderGastos(){
   empty.style.display='none';
   const tc={regular:'#6c63ff',inusual:'#ffb347',ahorro:'#00d4aa'};
   const{month:gMonth,year:gYear}=getSelectedMonthYear('g-month','g-year');
-  tbody.innerHTML=gastos.map(g=>{const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${g.desc||g.descripcion}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td><button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button></td></tr>`;}).join('');
+  tbody.innerHTML=gastos.map(g=>{const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${g.desc||g.descripcion}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap"><button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button></td></tr>`;}).join('');
 }
 
 // INGRESOS
@@ -820,7 +866,7 @@ function renderIngresos(){
   const tbody=document.getElementById('i-table-body'),empty=document.getElementById('i-empty');
   if(ingresos.length===0){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
-  tbody.innerHTML=ingresos.map(i=>`<tr><td style="color:var(--muted)">${i.fecha}</td><td style="font-weight:500">${i.fuente}${i.notas?`<div style="font-size:11px;color:var(--muted)">${i.notas}</div>`:''}</td><td><span class="badge" style="background:rgba(0,212,170,0.1);color:var(--green)">${i.tipo}</span></td><td style="color:var(--muted)">${i.moneda}</td><td class="amount-positive" style="font-weight:600">${i.moneda==='USD'?fmtUSD(i.monto):fmtARS(i.monto)}</td><td><button class="del-btn" onclick="deleteIngreso('${i.id}')">🗑</button></td></tr>`).join('');
+  tbody.innerHTML=ingresos.map(i=>`<tr><td style="color:var(--muted)">${i.fecha}</td><td style="font-weight:500">${i.fuente}${i.notas?`<div style="font-size:11px;color:var(--muted)">${i.notas}</div>`:''}</td><td><span class="badge" style="background:rgba(0,212,170,0.1);color:var(--green)">${i.tipo}</span></td><td style="color:var(--muted)">${i.moneda}</td><td class="amount-positive" style="font-weight:600">${i.moneda==='USD'?fmtUSD(i.monto):fmtARS(i.monto)}</td><td style="white-space:nowrap"><button class="del-btn" style="margin-right:2px" onclick="abrirEditIngreso('${i.id}')">✏️</button><button class="del-btn" onclick="deleteIngreso('${i.id}')">🗑</button></td></tr>`).join('');
 }
 
 // TARJETAS
@@ -1046,6 +1092,103 @@ async function deletePlanCuotas(planId) {
   renderGastos();
   renderDashboard();
   showToast('Plan eliminado ✓');
+}
+
+// EDITAR GASTO
+function abrirEditGasto(id) {
+  const g = db.gastos.find(x => x.id === id);
+  if (!g) return;
+  document.getElementById('eg-id').value = id;
+  document.getElementById('eg-plan-id').value = g.plan_id || '';
+  document.getElementById('eg-fecha').value = g.fecha;
+  document.getElementById('eg-desc').value = g.desc || g.descripcion;
+  document.getElementById('eg-monto').value = g.monto;
+  document.getElementById('eg-moneda').value = g.moneda || 'ARS';
+  document.getElementById('eg-tipo').value = g.tipo || 'regular';
+  document.getElementById('eg-medio').value = g.medio || 'efectivo';
+  document.getElementById('eg-notas').value = g.notas || '';
+  document.getElementById('eg-compartido').checked = !!g.es_compartido;
+  // Fill categorias
+  const catSel = document.getElementById('eg-cat');
+  catSel.innerHTML = db.categorias.map(cat => `<option value="${cat.name}" ${cat.name===g.cat?'selected':''}>${cat.emoji} ${cat.name}</option>`).join('');
+  // Fill tarjetas
+  const tSel = document.getElementById('eg-tarjeta-id');
+  tSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (db.tarjetas||[]).map(t => `<option value="${t.id}" ${t.id===g.tarjeta_id?'selected':''}>${t.nombre}</option>`).join('');
+  // Show plan note if part of a plan
+  document.getElementById('eg-plan-note').style.display = g.plan_id ? 'block' : 'none';
+  openModal('modal-edit-gasto');
+}
+
+async function saveEditGasto() {
+  const id = document.getElementById('eg-id').value;
+  const planId = document.getElementById('eg-plan-id').value;
+  const fecha = document.getElementById('eg-fecha').value;
+  const desc = document.getElementById('eg-desc').value.trim();
+  const monto = parseFloat(document.getElementById('eg-monto').value);
+  const moneda = document.getElementById('eg-moneda').value;
+  const cat = document.getElementById('eg-cat').value;
+  const tipo = document.getElementById('eg-tipo').value;
+  const medio = document.getElementById('eg-medio').value;
+  const notas = document.getElementById('eg-notas').value.trim();
+  const tarjetaId = document.getElementById('eg-tarjeta-id').value || null;
+  const esCompartido = document.getElementById('eg-compartido').checked;
+
+  if (!fecha || !desc || isNaN(monto)) { showToast('Completá los campos requeridos', 'error'); return; }
+  setBtnLoading('btn-save-gasto', true);
+
+  if (planId) {
+    // Update tarjeta_id and es_compartido for all cuotas in the plan
+    const { error } = await sb.from('gastos').update({ tarjeta_id: tarjetaId, es_compartido: esCompartido })
+      .eq('plan_id', planId).eq('user_id', currentUser.id);
+    if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
+    // Also update cat/tipo/notas on all cuotas
+    await sb.from('gastos').update({ cat, tipo, notas }).eq('plan_id', planId).eq('user_id', currentUser.id);
+  } else {
+    const { error } = await sb.from('gastos').update({ fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido }).eq('id', id);
+    if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
+  }
+
+  setBtnLoading('btn-save-gasto', false);
+  await refreshTable('gastos');
+  closeModal('modal-edit-gasto');
+  renderGastos();
+  renderDashboard();
+  showToast('Gasto actualizado ✓');
+}
+
+// EDITAR INGRESO
+function abrirEditIngreso(id) {
+  const i = db.ingresos.find(x => x.id === id);
+  if (!i) return;
+  document.getElementById('ei-id').value = id;
+  document.getElementById('ei-fecha').value = i.fecha;
+  document.getElementById('ei-fuente').value = i.fuente;
+  document.getElementById('ei-monto').value = i.monto;
+  document.getElementById('ei-moneda').value = i.moneda || 'ARS';
+  document.getElementById('ei-tipo').value = i.tipo || 'trabajo';
+  document.getElementById('ei-notas').value = i.notas || '';
+  openModal('modal-edit-ingreso');
+}
+
+async function saveEditIngreso() {
+  const id = document.getElementById('ei-id').value;
+  const fecha = document.getElementById('ei-fecha').value;
+  const fuente = document.getElementById('ei-fuente').value.trim();
+  const monto = parseFloat(document.getElementById('ei-monto').value);
+  const moneda = document.getElementById('ei-moneda').value;
+  const tipo = document.getElementById('ei-tipo').value;
+  const notas = document.getElementById('ei-notas').value.trim();
+  if (!fecha || !fuente || isNaN(monto)) { showToast('Completá los campos requeridos', 'error'); return; }
+  setBtnLoading('btn-save-ingreso', true);
+  const { error } = await sb.from('ingresos').update({ fecha, fuente, monto, moneda, tipo, notas }).eq('id', id);
+  setBtnLoading('btn-save-ingreso', false);
+  if (error) { showToast(error.message, 'error'); return; }
+  await refreshTable('ingresos');
+  closeModal('modal-edit-ingreso');
+  renderIngresos();
+  renderDashboard();
+  showToast('Ingreso actualizado ✓');
 }
 
 // HISTORIAL DE GASTOS
