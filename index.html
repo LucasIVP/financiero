@@ -1110,7 +1110,7 @@ function renderHistorial() {
     const esCreditoSinPlan = g.medio === 'credito' && !g.plan_id;
     const accion = esCreditoSinPlan
       ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="abrirConvertirTC('${g.id}')">✏️ Cuotas</button>`
-      : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</span>` : '<button class="del-btn" onclick="deleteGasto(''+g.id+'')">🗑</button>');
+      : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</span>` : `<button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`);
     return `<tr>
       <td style="color:var(--muted)">${g.fecha}</td>
       <td><div style="font-weight:500">${g.desc||g.descripcion}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}</td>
