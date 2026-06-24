@@ -486,8 +486,12 @@
     <div id="eg-plan-note" style="display:none;margin:10px 0;padding:10px;background:rgba(108,99,255,0.1);border-radius:8px;font-size:12px;color:var(--accent)">
       💳 Este gasto forma parte de un plan de cuotas. Los cambios de tarjeta y compartido se aplicarán a <strong>todas las cuotas del plan</strong>.
     </div>
-    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+    <div id="eg-convertir-note" style="display:none;margin:10px 0;padding:10px;background:rgba(0,212,170,0.08);border-radius:8px;font-size:12px;color:var(--accent2)">
+      💳 Este gasto es de crédito pero no tiene cuotas asignadas. Podés convertirlo a un plan de cuotas para rastrearlo en la pestaña Tarjetas.
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="closeModal('modal-edit-gasto')">Cancelar</button>
+      <button class="btn btn-ghost" id="btn-eg-convertir" style="display:none;border-color:var(--accent2);color:var(--accent2)" onclick="editarYConvertir()">💳 Convertir a cuotas</button>
       <button class="btn btn-primary" id="btn-save-gasto" onclick="saveEditGasto()">Guardar cambios</button>
     </div>
   </div>
@@ -1141,6 +1145,10 @@ function abrirEditGasto(id) {
     (db.tarjetas||[]).map(t => `<option value="${t.id}" ${t.id===g.tarjeta_id?'selected':''}>${t.nombre}</option>`).join('');
   // Show plan note if part of a plan
   document.getElementById('eg-plan-note').style.display = g.plan_id ? 'block' : 'none';
+  // Mostrar botón convertir solo si es crédito sin plan_id
+  const esCreditoSinPlan = (g.medio === 'credito') && !g.plan_id;
+  document.getElementById('eg-convertir-note').style.display = esCreditoSinPlan ? 'block' : 'none';
+  document.getElementById('btn-eg-convertir').style.display = esCreditoSinPlan ? 'inline-flex' : 'none';
   openModal('modal-edit-gasto');
 }
 
@@ -1179,6 +1187,22 @@ async function saveEditGasto() {
   renderGastos();
   renderDashboard();
   showToast('Gasto actualizado ✓');
+}
+
+// CONVERTIR DESDE MODAL EDICIÓN
+function editarYConvertir() {
+  // Tomar la tarjeta ya seleccionada en el modal de edición
+  const id = document.getElementById('eg-id').value;
+  const tarjetaId = document.getElementById('eg-tarjeta-id').value;
+  closeModal('modal-edit-gasto');
+  // Si el usuario cambió la tarjeta, actualizarla antes de abrir convertir
+  const g = db.gastos.find(x => x.id === id);
+  if (g && tarjetaId !== (g.tarjeta_id || '')) {
+    sb.from('gastos').update({ tarjeta_id: tarjetaId || null, medio: 'credito' }).eq('id', id)
+      .then(() => { g.tarjeta_id = tarjetaId || null; abrirConvertirTC(id); });
+  } else {
+    abrirConvertirTC(id);
+  }
 }
 
 // EDITAR INGRESO
