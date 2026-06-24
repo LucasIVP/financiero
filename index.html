@@ -899,9 +899,7 @@ function showApp(){
   fillMonthYearSelects('i-month','i-year');
   fillMonthYearSelects('comp-month','comp-year');
   const today=new Date().toISOString().slice(0,10);
-  ['g-fecha','i-fecha','c-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
-  const today=new Date().toISOString().slice(0,10);
-  const vaqFecha=document.getElementById('vaq-fecha');if(vaqFecha)vaqFecha.value=today;
+  ['g-fecha','i-fecha','c-fecha','vaq-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   populateCatSelects();renderDashboard();renderConfig();snapshotPatrimonio();loadCompartido().then(renderCompartido);
 }
 
