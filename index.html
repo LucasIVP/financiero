@@ -192,6 +192,7 @@
       <div class="form-group"><label>Categoría</label><select id="g-cat"></select></div>
       <div class="form-group"><label>Tipo</label><select id="g-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
       <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
       <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
       <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
       <div class="form-group" id="g-cuotas-fields" style="display:none;grid-column:1/-1">
@@ -247,18 +248,52 @@
 </div>
 
 <div id="page-tarjetas" class="page">
-  <div class="section-header"><div class="section-title">💳 Tarjetas y Cuotas</div><button class="btn btn-primary" onclick="openModal('modal-cuota')">+ Nueva cuota</button></div>
-  <div class="grid-3" style="margin-bottom:20px" id="tarjetas-resumen"></div>
+  <div class="section-header" style="margin-bottom:20px">
+    <div class="section-title">💳 Tarjetas y Cuotas</div>
+    <div class="month-selector">
+      <select id="tc-month" onchange="renderTarjetas()"></select>
+      <select id="tc-year" onchange="renderTarjetas()"></select>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid-3" id="tarjetas-resumen" style="margin-bottom:20px"></div>
+
+  <!-- Tabs -->
   <div class="inner-tabs">
-    <button class="inner-tab active" onclick="innerTab('tarjetas','activas',event)">Cuotas activas</button>
-    <button class="inner-tab" onclick="innerTab('tarjetas','historial',event)">Historial</button>
+    <button class="inner-tab active" onclick="innerTab('tarjetas','calendario',event)">📅 Calendario del mes</button>
+    <button class="inner-tab" onclick="innerTab('tarjetas','cuotas-activas',event)">💳 Cuotas activas</button>
+    <button class="inner-tab" onclick="innerTab('tarjetas','mis-tarjetas',event)">⚙️ Mis tarjetas</button>
   </div>
-  <div id="tarjetas-activas" class="inner-section active">
-    <div id="cuotas-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px"></div>
-    <div id="cuotas-empty" class="empty-state" style="display:none">No hay cuotas activas</div>
+
+  <!-- Tab: Calendario -->
+  <div id="tarjetas-calendario" class="inner-section active">
+    <div id="tc-calendario"></div>
   </div>
-  <div id="tarjetas-historial" class="inner-section">
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Descripción</th><th>Total</th><th>Cuotas</th><th>Cuota mensual</th><th>Estado</th></tr></thead><tbody id="cuotas-hist-body"></tbody></table></div></div>
+
+  <!-- Tab: Cuotas activas -->
+  <div id="tarjetas-cuotas-activas" class="inner-section">
+    <div id="tc-planes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px"></div>
+    <div id="tc-planes-empty" class="empty-state" style="display:none">No hay planes de cuotas activos</div>
+  </div>
+
+  <!-- Tab: Mis tarjetas -->
+  <div id="tarjetas-mis-tarjetas" class="inner-section">
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-weight:600;margin-bottom:14px">Nueva tarjeta</div>
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+        <div class="form-group"><label>Nombre</label><input type="text" id="tc-nombre" placeholder="Ej: MP Black"></div>
+        <div class="form-group"><label>Banco</label><input type="text" id="tc-banco" placeholder="Ej: MercadoPago"></div>
+        <div class="form-group"><label>Red</label><select id="tc-red"><option value="Mastercard">Mastercard</option><option value="Visa">Visa</option><option value="American Express">Amex</option></select></div>
+        <div class="form-group"><label>Día de cierre</label><input type="number" id="tc-cierre" placeholder="30" min="1" max="31"></div>
+        <div class="form-group"><label>Día de vencimiento</label><input type="number" id="tc-venc" placeholder="10" min="1" max="31"></div>
+        <div class="form-group"><label>Color</label><input type="color" id="tc-color" value="#6c63ff" style="height:42px;padding:4px 8px"></div>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn btn-primary" id="btn-add-tarjeta" onclick="addTarjeta()">+ Agregar tarjeta</button>
+      </div>
+    </div>
+    <div id="tc-tarjetas-list"></div>
   </div>
 </div>
 
@@ -390,24 +425,6 @@
 </div>
 
 <!-- MODALS -->
-<div class="modal-overlay" id="modal-cuota">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Nueva cuota / compra en cuotas</span><button class="modal-close" onclick="closeModal('modal-cuota')">×</button></div>
-    <div class="form-grid" style="grid-template-columns:1fr 1fr">
-      <div class="form-group" style="grid-column:1/-1"><label>Descripción</label><input type="text" id="c-desc" placeholder="Ej: Smart TV Samsung"></div>
-      <div class="form-group"><label>Monto total</label><input type="number" id="c-total" placeholder="0"></div>
-      <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="c-cuotas" placeholder="12" min="1"></div>
-      <div class="form-group"><label>Fecha primera cuota</label><input type="date" id="c-fecha"></div>
-      <div class="form-group"><label>Tarjeta</label><input type="text" id="c-tarjeta" placeholder="Ej: Visa Galicia"></div>
-      <div class="form-group"><label>Moneda</label><select id="c-moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></div>
-      <div class="form-group"><label>Categoría</label><select id="c-cat"></select></div>
-    </div>
-    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn btn-ghost" onclick="closeModal('modal-cuota')">Cancelar</button>
-      <button class="btn btn-primary" id="btn-add-cuota" onclick="addCuota()">Agregar</button>
-    </div>
-  </div>
-</div>
 
 <div class="modal-overlay" id="modal-inversion">
   <div class="modal">
@@ -474,7 +491,7 @@ let db = emptyDB();
 function emptyDB() {
   return {
     gastos:[],ingresos:[],cuotas:[],inversiones:[],
-    activos:[],deudas:[],patrimonioHistory:[],
+    activos:[],deudas:[],patrimonioHistory:[],tarjetas:[],
     categorias:defaultCategories(),
     config:{dolar:1400,dolar_fecha:'',obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30}
   };
@@ -543,7 +560,7 @@ async function loadAllData(){
   setLoading(true,'Cargando tus datos...');
   const uid=currentUser.id;
   try{
-    const[g,i,c,inv,act,deu,cfg,cat,ph]=await Promise.all([
+    const[g,i,c,inv,act,deu,cfg,cat,ph,tc]=await Promise.all([
       sb.from('gastos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('ingresos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('cuotas').select('*').eq('user_id',uid),
@@ -553,6 +570,7 @@ async function loadAllData(){
       sb.from('config').select('*').eq('user_id',uid).maybeSingle(),
       sb.from('categorias').select('*').eq('user_id',uid).order('orden'),
       sb.from('patrimonio_history').select('*').eq('user_id',uid).order('mes'),
+      sb.from('tarjetas').select('*').eq('user_id',uid).order('created_at'),
     ]);
     db.gastos=(g.data||[]).map(x=>({...x,desc:x.descripcion}));
     db.ingresos=i.data||[];
@@ -561,6 +579,7 @@ async function loadAllData(){
     db.activos=act.data||[];
     db.deudas=deu.data||[];
     db.patrimonioHistory=ph.data||[];
+    db.tarjetas=tc.data||[];
     if(!cfg.data){
       const defaults={user_id:uid,dolar:1400,dolar_fecha:new Date().toISOString().slice(0,10),obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30};
       await sb.from('config').insert(defaults);db.config=defaults;
@@ -591,7 +610,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:renderGastos,ingresos:renderIngresos,tarjetas:renderTarjetas,inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
+  const renders={dashboard:renderDashboard,gastos:renderGastos,ingresos:renderIngresos,tarjetas:()=>{fillMonthYearSelects('tc-month','tc-year');renderTarjetas();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -614,6 +633,11 @@ function toggleCuotasFields(prefix) {
     updateCuotaPreview(prefix);
   } else {
     fields.style.display = 'none';
+  }
+  // Show tarjeta selector only for credito in gastos individuales
+  if (prefix === 'g') {
+    const tcField = document.getElementById('g-tarjeta-field');
+    if (tcField) tcField.style.display = medio === 'credito' ? 'flex' : 'none';
   }
 }
 
@@ -673,7 +697,8 @@ async function addGasto(){
       while(m>11){m-=12;y++;}
       const fechaCuota=`${y}-${String(m+1).padStart(2,'0')}-01`;
       const esCompartido=document.getElementById('g-compartido').checked;
-      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido});
+      const tarjetaId=document.getElementById('g-tarjeta-id')?.value||null;
+      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null});
     }
     const{error}=await sb.from('gastos').insert(rows);
     setBtnLoading('btn-add-gasto',false);
@@ -736,27 +761,229 @@ function renderIngresos(){
   tbody.innerHTML=ingresos.map(i=>`<tr><td style="color:var(--muted)">${i.fecha}</td><td style="font-weight:500">${i.fuente}${i.notas?`<div style="font-size:11px;color:var(--muted)">${i.notas}</div>`:''}</td><td><span class="badge" style="background:rgba(0,212,170,0.1);color:var(--green)">${i.tipo}</span></td><td style="color:var(--muted)">${i.moneda}</td><td class="amount-positive" style="font-weight:600">${i.moneda==='USD'?fmtUSD(i.monto):fmtARS(i.monto)}</td><td><button class="del-btn" onclick="deleteIngreso('${i.id}')">🗑</button></td></tr>`).join('');
 }
 
-// CUOTAS
-async function addCuota(){
-  const desc=document.getElementById('c-desc').value.trim(),total=parseFloat(document.getElementById('c-total').value),ncuotas=parseInt(document.getElementById('c-cuotas').value),fecha=document.getElementById('c-fecha').value,tarjeta=document.getElementById('c-tarjeta').value.trim(),moneda=document.getElementById('c-moneda').value,cat=document.getElementById('c-cat').value;
-  if(!desc||isNaN(total)||isNaN(ncuotas)||!fecha){showToast('Completá todos los campos.','error');return;}
-  setBtnLoading('btn-add-cuota',true);
-  const{error}=await sb.from('cuotas').insert({user_id:currentUser.id,descripcion:desc,total,ncuotas,pagadas:0,fecha,tarjeta,moneda,cat});
-  setBtnLoading('btn-add-cuota',false);
-  if(error){showToast(error.message,'error');return;}
-  await refreshTable('cuotas');closeModal('modal-cuota');renderTarjetas();showToast('Cuota agregada ✓');
+// TARJETAS
+async function loadTarjetas() {
+  const { data } = await sb.from('tarjetas').select('*').eq('user_id', currentUser.id).order('created_at');
+  db.tarjetas = data || [];
 }
-async function pagarCuota(id){const c=db.cuotas.find(x=>x.id===id);if(!c)return;const np=Math.min(c.pagadas+1,c.ncuotas);const{error}=await sb.from('cuotas').update({pagadas:np}).eq('id',id);if(error){showToast(error.message,'error');return;}c.pagadas=np;renderTarjetas();showToast('Cuota marcada como pagada ✓');}
-async function deleteCuota(id){const{error}=await sb.from('cuotas').delete().eq('id',id);if(error){showToast(error.message,'error');return;}db.cuotas=db.cuotas.filter(c=>c.id!==id);renderTarjetas();showToast('Eliminada');}
-function renderTarjetas(){
-  const activas=db.cuotas.filter(c=>c.pagadas<c.ncuotas),terminadas=db.cuotas.filter(c=>c.pagadas>=c.ncuotas);
-  const totalM=activas.reduce((s,c)=>s+toARS(c.total/c.ncuotas,c.moneda),0);
-  document.getElementById('tarjetas-resumen').innerHTML=`<div class="card"><div class="card-title">Cuotas activas</div><div class="card-value">${activas.length}</div></div><div class="card"><div class="card-title">Gasto mensual en cuotas</div><div class="card-value amount-negative">${fmtARS(totalM)}</div></div><div class="card"><div class="card-title">Cuotas finalizadas</div><div class="card-value" style="color:var(--muted)">${terminadas.length}</div></div>`;
-  const grid=document.getElementById('cuotas-grid'),emptyEl=document.getElementById('cuotas-empty');
-  if(activas.length===0){grid.innerHTML='';emptyEl.style.display='block';}
-  else{emptyEl.style.display='none';grid.innerHTML=activas.map(c=>{const pct=Math.round(c.pagadas/c.ncuotas*100),cm=c.total/c.ncuotas;return`<div class="cuota-card"><div class="cuota-header"><span class="cuota-name">${c.desc||c.descripcion}</span><button class="del-btn" onclick="deleteCuota('${c.id}')">🗑</button></div><div style="font-size:12px;color:var(--muted);margin-bottom:6px">${c.tarjeta||'Sin tarjeta'} · ${c.cat||''}</div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>Cuota: <strong>${c.moneda==='USD'?fmtUSD(cm):fmtARS(cm)}</strong></span><span style="color:var(--muted)">${c.pagadas}/${c.ncuotas}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${pct<50?'var(--accent)':pct<80?'var(--warn)':'var(--green)'}"></div></div><div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--muted)"><span>${c.ncuotas-c.pagadas} restantes</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="pagarCuota('${c.id}')">✓ Pagar cuota</button></div></div>`;}).join('');}
-  document.getElementById('cuotas-hist-body').innerHTML=terminadas.map(c=>`<tr><td>${c.desc||c.descripcion}</td><td>${c.moneda==='USD'?fmtUSD(c.total):fmtARS(c.total)}</td><td>${c.ncuotas}</td><td>${c.moneda==='USD'?fmtUSD(c.total/c.ncuotas):fmtARS(c.total/c.ncuotas)}</td><td><span class="badge" style="background:rgba(0,212,170,0.1);color:var(--green)">Finalizada</span></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Sin historial</td></tr>';
+
+async function addTarjeta() {
+  const nombre = document.getElementById('tc-nombre').value.trim();
+  const banco = document.getElementById('tc-banco').value.trim();
+  const red = document.getElementById('tc-red').value;
+  const dia_cierre = parseInt(document.getElementById('tc-cierre').value);
+  const dia_vencimiento = parseInt(document.getElementById('tc-venc').value) || null;
+  const color = document.getElementById('tc-color').value;
+  if (!nombre || isNaN(dia_cierre)) { showToast('Completá nombre y día de cierre', 'error'); return; }
+  setBtnLoading('btn-add-tarjeta', true);
+  const { error } = await sb.from('tarjetas').insert({ user_id: currentUser.id, nombre, banco, red, dia_cierre, dia_vencimiento, color });
+  setBtnLoading('btn-add-tarjeta', false);
+  if (error) { showToast(error.message, 'error'); return; }
+  await loadTarjetas();
+  populateTarjetaSelects();
+  renderTarjetas();
+  showToast('Tarjeta agregada ✓');
+  document.getElementById('tc-nombre').value = '';
+  document.getElementById('tc-banco').value = '';
+}
+
+async function deleteTarjeta(id) {
+  if (!confirm('¿Eliminar esta tarjeta?')) return;
+  const { error } = await sb.from('tarjetas').delete().eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  db.tarjetas = db.tarjetas.filter(t => t.id !== id);
+  populateTarjetaSelects();
+  renderTarjetas();
+  showToast('Eliminada');
+}
+
+function populateTarjetaSelects() {
+  const sel = document.getElementById('g-tarjeta-id');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre} (${t.banco || t.red})</option>`).join('');
+}
+
+function renderTarjetas() {
+  fillMonthYearSelects('tc-month', 'tc-year');
+  const { month, year } = getSelectedMonthYear('tc-month', 'tc-year');
+
+  // Planes de cuotas activos: gastos con plan_id agrupados
+  const planes = {};
+  db.gastos.filter(g => g.plan_id).forEach(g => {
+    if (!planes[g.plan_id]) planes[g.plan_id] = [];
+    planes[g.plan_id].push(g);
+  });
+
+  const planesArr = Object.values(planes).map(cuotas => {
+    cuotas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const primera = cuotas[0];
+    const ultima = cuotas[cuotas.length - 1];
+    const hoy = new Date().toISOString().slice(0, 7);
+    const pagadas = cuotas.filter(g => g.fecha.slice(0, 7) <= hoy).length;
+    const tarjeta = db.tarjetas?.find(t => t.id === primera.tarjeta_id);
+    return { cuotas, primera, ultima, pagadas, tarjeta, total: primera.cuota_monto * cuotas.length, cuotaMonto: primera.cuota_monto, ncuotas: primera.cuota_total };
+  }).filter(p => p.pagadas < p.ncuotas);
+
+  // KPIs
+  const gastosTC = db.gastos.filter(g => {
+    const d = new Date(g.fecha + 'T12:00:00');
+    return d.getMonth() === month && d.getFullYear() === year && g.medio === 'credito';
+  });
+  const totalMes = gastosTC.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+  document.getElementById('tarjetas-resumen').innerHTML = `
+    <div class="card"><div class="card-title">Planes activos</div><div class="card-value">${planesArr.length}</div></div>
+    <div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value amount-negative">${fmtARS(totalMes)}</div><div class="card-sub">${gastosTC.length} movimiento${gastosTC.length !== 1 ? 's' : ''}</div></div>
+    <div class="card"><div class="card-title">Tarjetas configuradas</div><div class="card-value">${(db.tarjetas || []).length}</div></div>`;
+
+  // Calendario
+  renderCalendarioTC(month, year, gastosTC);
+
+  // Planes activos
+  const grid = document.getElementById('tc-planes-grid');
+  const empty = document.getElementById('tc-planes-empty');
+  if (planesArr.length === 0) { grid.innerHTML = ''; empty.style.display = 'block'; }
+  else {
+    empty.style.display = 'none';
+    grid.innerHTML = planesArr.map(p => {
+      const pct = Math.round(p.pagadas / p.ncuotas * 100);
+      const color = p.tarjeta?.color || 'var(--accent)';
+      return `<div class="cuota-card" style="border-left:3px solid ${color}">
+        <div class="cuota-header">
+          <span class="cuota-name">${p.primera.desc || p.primera.descripcion.replace(/ — cuota \d+\/\d+$/, '')}</span>
+          <button class="del-btn" onclick="deletePlanCuotas('${p.primera.plan_id}')">🗑</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${p.tarjeta ? `<span style="color:${color}">${p.tarjeta.nombre}</span> · ` : ''}${p.primera.moneda === 'USD' ? fmtUSD(p.cuotaMonto) : fmtARS(p.cuotaMonto)}/mes · Total: ${p.primera.moneda === 'USD' ? fmtUSD(p.total) : fmtARS(p.total)}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;color:var(--muted)"><span>${p.pagadas}/${p.ncuotas} cuotas</span><span>Hasta ${p.ultima.fecha.slice(0,7)}</span></div>
+        <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+    }).join('');
+  }
+
+  // Mis tarjetas
+  const list = document.getElementById('tc-tarjetas-list');
+  if (!db.tarjetas || db.tarjetas.length === 0) {
+    list.innerHTML = '<div class="empty-state">No hay tarjetas configuradas</div>';
+  } else {
+    list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">${db.tarjetas.map(t => {
+      const cuotasTC = planesArr.filter(p => p.tarjeta?.id === t.id);
+      const totalTC = cuotasTC.reduce((s, p) => s + toARS(p.cuotaMonto, p.primera.moneda), 0);
+      return `<div class="cuota-card" style="border-left:4px solid ${t.color}">
+        <div class="cuota-header"><span class="cuota-name" style="color:${t.color}">${t.nombre}</span><button class="del-btn" onclick="deleteTarjeta('${t.id}')">🗑</button></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${t.banco || ''} · ${t.red} · Cierra día ${t.dia_cierre}${t.dia_vencimiento ? ` · Vence día ${t.dia_vencimiento}` : ''}</div>
+        <div style="font-size:13px">Cuota mensual activa: <strong>${fmtARS(totalTC)}</strong></div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   populateCatSelects();
+}
+
+function renderCalendarioTC(month, year, gastosTC) {
+  const dolar = db.config.dolar || 1;
+  const ingresosMes = filterByMonth(db.ingresos, month, year);
+  const totalIngresos = ingresosMes.reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
+
+  // Agrupar cuotas por tarjeta para este mes
+  const porTarjeta = {};
+  gastosTC.forEach(g => {
+    const tid = g.tarjeta_id || '__sin__';
+    if (!porTarjeta[tid]) porTarjeta[tid] = { gastos: [], tarjeta: db.tarjetas?.find(t => t.id === tid) };
+    porTarjeta[tid].gastos.push(g);
+  });
+
+  const hoy = new Date();
+  const diasMes = new Date(year, month + 1, 0).getDate();
+
+  // Eventos del mes: cierres de tarjeta + ingresos
+  const eventos = [];
+
+  // Cierres de tarjeta
+  (db.tarjetas || []).forEach(t => {
+    const dia = Math.min(t.dia_cierre, diasMes);
+    const gastosT = gastosTC.filter(g => g.tarjeta_id === t.id);
+    const totalT = gastosT.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+    eventos.push({ dia, tipo: 'cierre', tarjeta: t, total: totalT });
+    if (t.dia_vencimiento) {
+      let diaV = t.dia_vencimiento;
+      let mV = month, yV = year;
+      if (diaV <= t.dia_cierre) { mV++; if (mV > 11) { mV = 0; yV++; } }
+      eventos.push({ dia: diaV, mes: mV, anio: yV, tipo: 'vencimiento', tarjeta: t, total: totalT });
+    }
+  });
+
+  // Ingresos
+  ingresosMes.forEach(i => {
+    const dia = parseInt(i.fecha.split('-')[2]);
+    eventos.push({ dia, tipo: 'ingreso', ingreso: i });
+  });
+
+  eventos.sort((a, b) => a.dia - b.dia);
+
+  const totalCuotasMes = gastosTC.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+
+  let html = `<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:600">Flujo del mes — ${MONTHS[month]} ${year}</div>
+      <div style="font-size:13px;color:var(--muted)">Ingresos: <span style="color:var(--green);font-weight:600">${fmtARS(totalIngresos)}</span> · Cuotas TC: <span style="color:var(--red);font-weight:600">${fmtARS(totalCuotasMes)}</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">`;
+
+  if (eventos.length === 0) {
+    html += '<div class="empty-state">No hay eventos este mes. Configurá tus tarjetas y cargá ingresos.</div>';
+  } else {
+    eventos.forEach(ev => {
+      if (ev.tipo === 'cierre') {
+        const esHoy = ev.dia === hoy.getDate() && month === hoy.getMonth() && year === hoy.getFullYear();
+        const pasado = new Date(year, month, ev.dia) < hoy;
+        html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:10px;border-left:3px solid ${ev.tarjeta.color}${pasado ? ';opacity:0.6' : ''}">
+          <div style="font-size:20px;min-width:36px;text-align:center">💳</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px">Cierre ${ev.tarjeta.nombre} <span style="font-size:12px;color:var(--muted)">(${ev.tarjeta.red})</span></div>
+            <div style="font-size:12px;color:var(--muted)">Día ${ev.dia}${esHoy ? ' — <span style="color:var(--warn)">hoy</span>' : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:700;color:var(--red)">${fmtARS(ev.total)}</div>
+            <div style="font-size:11px;color:var(--muted)">${ev.tarjeta.gastos?.length || gastosTC.filter(g=>g.tarjeta_id===ev.tarjeta.id).length} cuota${gastosTC.filter(g=>g.tarjeta_id===ev.tarjeta.id).length!==1?'s':''}</div>
+          </div>
+        </div>`;
+      } else if (ev.tipo === 'vencimiento') {
+        const label = ev.mes !== month ? ` (${MONTHS[ev.mes]} ${ev.anio})` : '';
+        html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,179,71,0.08);border-radius:10px;border-left:3px solid var(--warn)">
+          <div style="font-size:20px;min-width:36px;text-align:center">⚠️</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px">Vencimiento ${ev.tarjeta.nombre}</div>
+            <div style="font-size:12px;color:var(--muted)">Día ${ev.dia}${label}</div>
+          </div>
+          <div style="font-weight:700;color:var(--warn)">${fmtARS(ev.total)}</div>
+        </div>`;
+      } else if (ev.tipo === 'ingreso') {
+        const montoFmt = ev.ingreso.moneda === 'USD' ? fmtUSD(ev.ingreso.monto) : fmtARS(ev.ingreso.monto);
+        html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(0,212,170,0.06);border-radius:10px;border-left:3px solid var(--green)">
+          <div style="font-size:20px;min-width:36px;text-align:center">💵</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px">${ev.ingreso.fuente}</div>
+            <div style="font-size:12px;color:var(--muted)">Día ${ev.dia}</div>
+          </div>
+          <div style="font-weight:700;color:var(--green)">${montoFmt}</div>
+        </div>`;
+      }
+    });
+  }
+
+  html += '</div></div>';
+  document.getElementById('tc-calendario').innerHTML = html;
+}
+
+async function deletePlanCuotas(planId) {
+  if (!confirm('¿Eliminar todas las cuotas de este plan?')) return;
+  const { error } = await sb.from('gastos').delete().eq('plan_id', planId).eq('user_id', currentUser.id);
+  if (error) { showToast(error.message, 'error'); return; }
+  db.gastos = db.gastos.filter(g => g.plan_id !== planId);
+  renderTarjetas();
+  renderGastos();
+  renderDashboard();
+  showToast('Plan eliminado ✓');
 }
 
 // INVERSIONES
@@ -910,7 +1137,8 @@ function showApp(){
   fillMonthYearSelects('comp-month','comp-year');
   const today=new Date().toISOString().slice(0,10);
   ['g-fecha','i-fecha','c-fecha','vaq-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
-  populateCatSelects();renderDashboard();renderConfig();snapshotPatrimonio();loadCompartido().then(renderCompartido);
+  fillMonthYearSelects('tc-month','tc-year');
+  populateCatSelects();populateTarjetaSelects();renderDashboard();renderConfig();snapshotPatrimonio();loadCompartido().then(renderCompartido);
 }
 
 async function init(){
