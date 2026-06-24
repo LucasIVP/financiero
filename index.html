@@ -710,7 +710,8 @@ function renderGastos(){
   if(gastos.length===0){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   const tc={regular:'#6c63ff',inusual:'#ffb347',ahorro:'#00d4aa'};
-  tbody.innerHTML=gastos.map(g=>{const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${g.desc||g.descripcion}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${g.moneda==='USD'?fmtUSD(g.monto):fmtARS(g.monto)}</td><td><button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button></td></tr>`;}).join('');
+  const{month:gMonth,year:gYear}=getSelectedMonthYear('g-month','g-year');
+  tbody.innerHTML=gastos.map(g=>{const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${g.desc||g.descripcion}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td><button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button></td></tr>`;}).join('');
 }
 
 // INGRESOS
@@ -870,23 +871,32 @@ async function resetData(){
 
 // DASHBOARD
 let chartCat=null,chartEvol=null;
+
+// Calcula el monto efectivo de un gasto para el dashboard individual:
+// si es compartido, aplica el proporcional del mes
+function gastoEfectivo(g, month, year) {
+  if (!g.es_compartido) return toARS(g.monto, g.moneda);
+  const { propYo } = calcProporcionMes(month, year);
+  return toARS(g.monto, g.moneda) * propYo;
+}
+
 function renderDashboard(){
   const{month,year}=getSelectedMonthYear('dash-month','dash-year');
   document.getElementById('dash-subtitle').textContent=`${MONTHS[month]} ${year}`;
   document.getElementById('dolar-val').textContent=(db.config.dolar||'—').toLocaleString('es-AR');
   const gastos=filterByMonth(db.gastos,month,year),ingresos=filterByMonth(db.ingresos,month,year),cuotasActivas=db.cuotas.filter(c=>c.pagadas<c.ncuotas);
-  const tG=gastos.reduce((s,g)=>s+toARS(g.monto,g.moneda),0),tC=cuotasActivas.reduce((s,c)=>s+toARS(c.total/c.ncuotas,c.moneda),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
+  const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tC=cuotasActivas.reduce((s,c)=>s+toARS(c.total/c.ncuotas,c.moneda),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
   document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${bal>=0?'amount-positive':'amount-negative'}">${fmtARS(bal)}</div><div class="card-sub">${bal>=0?'Superávit 🎉':'Déficit ⚠️'}</div></div><div class="card"><div class="card-title">Cuotas activas /mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${cuotasActivas.length} cuota${cuotasActivas.length!==1?'s':''}</div></div>`;
-  const porCat={};gastos.forEach(g=>{const v=toARS(g.monto,g.moneda);porCat[g.cat]=(porCat[g.cat]||0)+v;});
+  const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const ctx1=document.getElementById('chart-cat').getContext('2d');if(chartCat)chartCat.destroy();
   if(sc.length>0)chartCat=new Chart(ctx1,{type:'bar',data:{labels:sc.map(([k])=>k),datasets:[{data:sc.map(([,v])=>v),backgroundColor:sc.map(([k])=>catColor(k)),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#7b7f9e',maxRotation:30}},y:{ticks:{color:'#7b7f9e',callback:v=>'$'+Math.round(v/1000)+'k'}}}}});
-  const lab=[],gD=[],iD=[];for(let k=5;k>=0;k--){let m=month-k,y=year;if(m<0){m+=12;y--;}lab.push(MONTHS[m].slice(0,3));gD.push(filterByMonth(db.gastos,m,y).reduce((s,g)=>s+toARS(g.monto,g.moneda),0));iD.push(filterByMonth(db.ingresos,m,y).reduce((s,i)=>s+toARS(i.monto,i.moneda),0));}
+  const lab=[],gD=[],iD=[];for(let k=5;k>=0;k--){let m=month-k,y=year;if(m<0){m+=12;y--;}lab.push(MONTHS[m].slice(0,3));gD.push(filterByMonth(db.gastos,m,y).reduce((s,g)=>s+gastoEfectivo(g,m,y),0));iD.push(filterByMonth(db.ingresos,m,y).reduce((s,i)=>s+toARS(i.monto,i.moneda),0));}
   const ctx2=document.getElementById('chart-evol').getContext('2d');if(chartEvol)chartEvol.destroy();
   chartEvol=new Chart(ctx2,{type:'line',data:{labels:lab,datasets:[{label:'Gastos',data:gD,borderColor:'#ff4d6d',backgroundColor:'rgba(255,77,109,0.1)',fill:true,tension:0.4,pointRadius:4},{label:'Ingresos',data:iD,borderColor:'#00d4aa',backgroundColor:'rgba(0,212,170,0.1)',fill:true,tension:0.4,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:'#7b7f9e'}},y:{ticks:{color:'#7b7f9e',callback:v=>'$'+Math.round(v/1000)+'k'}}},plugins:{legend:{labels:{color:'#7b7f9e',font:{size:12}}}}}});
   document.getElementById('dash-cat-list').innerHTML=sc.length===0?'<div class="empty-state">Sin gastos este mes</div>':sc.map(([cat,val])=>{const catObj=db.categorias.find(c=>c.name===cat)||{emoji:'📄'};const pct=tG>0?Math.round(val/tG*100):0;return`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${catObj.emoji} ${cat}</span><span style="font-weight:600">${fmtARS(val)} <span style="color:var(--muted);font-weight:400">(${pct}%)</span></span></div><div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${catColor(cat)}"></div></div></div>`;}).join('');
   const ult=[...db.gastos].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,5);
-  document.getElementById('dash-ultimos').innerHTML=ult.length===0?'<div class="empty-state">Sin movimientos recientes</div>':ult.map(g=>{const catObj=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄'};return`<div class="summary-row"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">${catObj.emoji}</span><div><div style="font-size:14px;font-weight:500">${g.desc||g.descripcion}</div><div style="font-size:12px;color:var(--muted)">${g.fecha} · ${g.cat}</div></div></div><span class="amount-negative" style="font-weight:600">${g.moneda==='USD'?fmtUSD(g.monto):fmtARS(g.monto)}</span></div>`;}).join('');
+  document.getElementById('dash-ultimos').innerHTML=ult.length===0?'<div class="empty-state">Sin movimientos recientes</div>':ult.map(g=>{const d=new Date(g.fecha+'T12:00:00');const montoEf=gastoEfectivo(g,d.getMonth(),d.getFullYear());const catObj=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄'};return`<div class="summary-row"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">${catObj.emoji}</span><div><div style="font-size:14px;font-weight:500">${g.desc||g.descripcion}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</div><div style="font-size:12px;color:var(--muted)">${g.fecha} · ${g.cat}</div></div></div><span class="amount-negative" style="font-weight:600">${fmtARS(montoEf)}</span></div>`;}).join('');
 }
 
 // INIT
