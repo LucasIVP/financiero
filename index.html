@@ -837,7 +837,7 @@ function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const gastos=filterByMonth(db.gastos,month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('g-table-title').textContent=`Gastos — ${MONTHS[month]} ${year}`;
-  const total=gastos.reduce((s,g)=>s+toARS(g.monto,g.moneda),0);
+  const total=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
   document.getElementById('g-total-badge').textContent=gastos.length>0?`Total: ${fmtARS(total)}`:'';
   const tbody=document.getElementById('g-table-body'),empty=document.getElementById('g-empty');
   if(gastos.length===0){tbody.innerHTML='';empty.style.display='block';return;}
@@ -1482,9 +1482,20 @@ function renderDashboard(){
   const{month,year}=getSelectedMonthYear('dash-month','dash-year');
   document.getElementById('dash-subtitle').textContent=`${MONTHS[month]} ${year}`;
   document.getElementById('dolar-val').textContent=(db.config.dolar||'—').toLocaleString('es-AR');
-  const gastos=filterByMonth(db.gastos,month,year),ingresos=filterByMonth(db.ingresos,month,year),cuotasActivas=db.cuotas.filter(c=>c.pagadas<c.ncuotas);
-  const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tC=cuotasActivas.reduce((s,c)=>s+toARS(c.total/c.ncuotas,c.moneda),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
-  document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${bal>=0?'amount-positive':'amount-negative'}">${fmtARS(bal)}</div><div class="card-sub">${bal>=0?'Superávit 🎉':'Déficit ⚠️'}</div></div><div class="card"><div class="card-title">Cuotas activas /mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${cuotasActivas.length} cuota${cuotasActivas.length!==1?'s':''}</div></div>`;
+  const gastos=filterByMonth(db.gastos,month,year),ingresos=filterByMonth(db.ingresos,month,year);
+  // Cuotas activas desde nuevo esquema (plan_id en gastos)
+  const hoyYM=new Date().toISOString().slice(0,7);
+  const planes={};
+  db.gastos.filter(g=>g.plan_id).forEach(g=>{if(!planes[g.plan_id])planes[g.plan_id]=[];planes[g.plan_id].push(g);});
+  const planesActivos=Object.values(planes).filter(cuotas=>{
+    const pagadas=cuotas.filter(g=>g.fecha.slice(0,7)<=hoyYM).length;
+    return pagadas<(cuotas[0].cuota_total||cuotas.length);
+  });
+  const cuotasMes=filterByMonth(db.gastos,month,year).filter(g=>g.plan_id);
+  const tC=cuotasMes.reduce((s,g)=>s+toARS(g.monto,g.moneda),0);
+  const nPlanesActivos=planesActivos.length;
+  const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
+  document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${bal>=0?'amount-positive':'amount-negative'}">${fmtARS(bal)}</div><div class="card-sub">${bal>=0?'Superávit 🎉':'Déficit ⚠️'}</div></div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const ctx1=document.getElementById('chart-cat').getContext('2d');if(chartCat)chartCat.destroy();
@@ -1509,7 +1520,7 @@ function showApp(){
   const today=new Date().toISOString().slice(0,10);
   ['g-fecha','i-fecha','c-fecha','vaq-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   fillMonthYearSelects('tc-month','tc-year');
-  populateCatSelects();populateTarjetaSelects();renderDashboard();renderConfig();snapshotPatrimonio();loadCompartido().then(renderCompartido);
+  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();loadCompartido().then(()=>{renderDashboard();renderCompartido();});
 }
 
 async function init(){
