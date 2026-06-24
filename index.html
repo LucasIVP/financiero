@@ -458,9 +458,20 @@
         <div class="form-group"><label>Descripción</label><input type="text" id="gg-desc" placeholder="Ej: Regalo cumple Ana"></div>
         <div class="form-group"><label>Monto total</label><input type="number" id="gg-monto" placeholder="0" oninput="updateGGPreview()"></div>
         <div class="form-group"><label>Moneda</label><select id="gg-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-        <div class="form-group"><label>Medio de pago</label><select id="gg-medio"><option value="credito">Crédito</option><option value="debito">Débito</option><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select></div>
+        <div class="form-group"><label>Medio de pago</label><select id="gg-medio" onchange="toggleGGCuotas()"><option value="credito">Crédito</option><option value="debito">Débito</option><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select></div>
         <div class="form-group"><label>Categoría</label><select id="gg-cat"></select></div>
         <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="gg-notas" placeholder="Opcional"></div>
+        <div class="form-group" id="gg-cuotas-fields" style="display:none;grid-column:1/-1">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas (tu parte)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+              <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="gg-ncuotas" placeholder="12" min="1" max="60" value="1" oninput="updateGGPreview()"></div>
+              <div class="form-group"><label>Mes primera cuota</label><select id="gg-cuota-mes"></select></div>
+              <div class="form-group"><label>Año primera cuota</label><select id="gg-cuota-anio"></select></div>
+            </div>
+            <div id="gg-cuota-preview" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+          </div>
+        </div>
       </div>
       <div style="margin:14px 0 10px;font-weight:600;font-size:13px">Participantes</div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
@@ -648,6 +659,28 @@
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('modal-deuda')">Cancelar</button>
       <button class="btn btn-primary" id="btn-add-deuda" onclick="addDeuda()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-edit-grupal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">✏️ Editar participantes</span><button class="modal-close" onclick="closeModal('modal-edit-grupal')">×</button></div>
+    <input type="hidden" id="eg-grupal-id">
+    <div id="eg-grupal-info" style="margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px"></div>
+    <div style="font-weight:600;font-size:13px;margin-bottom:10px">Participantes actuales</div>
+    <div id="eg-grupal-lista" style="margin-bottom:16px"></div>
+    <div style="font-weight:600;font-size:13px;margin-bottom:10px">Agregar participante</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <input type="text" id="eg-nueva-persona" placeholder="Nombre" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+      <select id="eg-nuevo-rol" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+        <option value="me_debe">Me debe</option>
+        <option value="le_debo">Le debo</option>
+      </select>
+      <button class="btn btn-ghost" onclick="agregarParticipanteEdit()">+ Agregar</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-grupal')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -1887,10 +1920,126 @@ function removeGGParticipante(idx) {
 function clearGGForm() {
   ggParticipantes = [];
   ['gg-desc','gg-monto','gg-notas','gg-nueva-persona'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('gg-medio').value = 'credito';
+  document.getElementById('gg-medio').value = 'efectivo';
   document.getElementById('gg-moneda').value = 'ARS';
+  const fields = document.getElementById('gg-cuotas-fields'); if(fields) fields.style.display='none';
+  const ncuotas = document.getElementById('gg-ncuotas'); if(ncuotas) ncuotas.value='1';
   const prev = document.getElementById('gg-preview'); if(prev) prev.textContent='';
   renderGGParticipantesList();
+}
+
+
+function toggleGGCuotas() {
+  const medio = document.getElementById('gg-medio').value;
+  const fields = document.getElementById('gg-cuotas-fields');
+  if (!fields) return;
+  if (medio === 'credito') {
+    fields.style.display = 'block';
+    fillGGCuotaMesAnio();
+  } else {
+    fields.style.display = 'none';
+  }
+  updateGGPreview();
+}
+
+function fillGGCuotaMesAnio() {
+  const mesEl = document.getElementById('gg-cuota-mes');
+  const anioEl = document.getElementById('gg-cuota-anio');
+  if (!mesEl || mesEl.options.length > 0) return;
+  const hoy = new Date();
+  let nextM = hoy.getMonth() + 1, nextY = hoy.getFullYear();
+  if (nextM > 11) { nextM = 0; nextY++; }
+  mesEl.innerHTML = MONTHS.map((m,i) => `<option value="${i}" ${i===nextM?'selected':''}>${m}</option>`).join('');
+  const years = []; for (let y=hoy.getFullYear(); y<=hoy.getFullYear()+3; y++) years.push(y);
+  anioEl.innerHTML = years.map(y => `<option value="${y}" ${y===nextY?'selected':''}>${y}</option>`).join('');
+  mesEl.addEventListener('change', updateGGPreview);
+  anioEl.addEventListener('change', updateGGPreview);
+  document.getElementById('gg-ncuotas').addEventListener('input', updateGGPreview);
+}
+
+// EDITAR PARTICIPANTES
+function abrirEditGrupal(grupalId) {
+  const g = dbCompartido.grupales.find(x => x.id === grupalId);
+  if (!g) return;
+  document.getElementById('eg-grupal-id').value = grupalId;
+  document.getElementById('eg-grupal-info').innerHTML = `<strong>${g.descripcion}</strong> · ${g.moneda==='USD'?fmtUSD(g.monto):fmtARS(g.monto)} · ${g.fecha}`;
+  renderEditGrupalLista(grupalId);
+  openModal('modal-edit-grupal');
+}
+
+function renderEditGrupalLista(grupalId) {
+  const parts = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id === grupalId);
+  const g = dbCompartido.grupales.find(x => x.id === grupalId);
+  const nTotal = parts.length;
+  const parteMonto = g ? Math.round(g.monto / nTotal * 100) / 100 : 0;
+
+  document.getElementById('eg-grupal-lista').innerHTML = parts.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px">
+      <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}</span>
+      <span style="font-size:12px;color:${p.es_yo?'var(--accent)':p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.es_yo?'Yo':p.rol==='me_debe'?'Me debe':'Le debo'}</span>
+      <span style="font-size:13px;font-weight:600;min-width:80px;text-align:right">${g?.moneda==='USD'?fmtUSD(p.monto_parte):fmtARS(p.monto_parte)}</span>
+      ${!p.es_yo ? `<button class="del-btn" onclick="quitarParticipanteEdit('${p.id}','${grupalId}')">✕</button>` : ''}
+    </div>`).join('');
+}
+
+async function agregarParticipanteEdit() {
+  const grupalId = document.getElementById('eg-grupal-id').value;
+  const nombre = document.getElementById('eg-nueva-persona').value.trim();
+  const rol = document.getElementById('eg-nuevo-rol').value;
+  if (!nombre) { showToast('Ingresá un nombre', 'error'); return; }
+
+  const g = dbCompartido.grupales.find(x => x.id === grupalId);
+  const partsActuales = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id === grupalId);
+
+  if (partsActuales.find(p => p.nombre.toLowerCase() === nombre.toLowerCase())) {
+    showToast('Ya está en la lista', 'error'); return;
+  }
+
+  // Recalcular parte con nuevo total
+  const nNuevo = partsActuales.length + 1;
+  const parteMonto = Math.round(g.monto / nNuevo * 100) / 100;
+
+  // Update existing participants' monto_parte
+  await Promise.all(partsActuales.map(p =>
+    sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
+  ));
+  partsActuales.forEach(p => p.monto_parte = parteMonto);
+
+  // Insert new participant
+  const { data: newP, error } = await sb.from('gastos_grupales_participantes')
+    .insert({ gasto_grupal_id: grupalId, user_id: currentUser.id, nombre, es_yo: false, rol, monto_parte: parteMonto, moneda: g.moneda, pagado: false })
+    .select().single();
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+
+  dbCompartido.grupalesParticipantes.push(newP);
+  document.getElementById('eg-nueva-persona').value = '';
+  renderEditGrupalLista(grupalId);
+  renderGrupales();
+  showToast('Participante agregado ✓');
+}
+
+async function quitarParticipanteEdit(partId, grupalId) {
+  const g = dbCompartido.grupales.find(x => x.id === grupalId);
+  const partsActuales = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id === grupalId && p.id !== partId);
+  if (partsActuales.filter(p => !p.es_yo).length === 0) {
+    showToast('Debe quedar al menos un participante además de vos', 'error'); return;
+  }
+
+  const { error } = await sb.from('gastos_grupales_participantes').delete().eq('id', partId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  dbCompartido.grupalesParticipantes = dbCompartido.grupalesParticipantes.filter(p => p.id !== partId);
+
+  // Recalcular partes
+  const nNuevo = partsActuales.length;
+  const parteMonto = Math.round(g.monto / nNuevo * 100) / 100;
+  await Promise.all(partsActuales.map(p =>
+    sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
+  ));
+  partsActuales.forEach(p => p.monto_parte = parteMonto);
+
+  renderEditGrupalLista(grupalId);
+  renderGrupales();
+  showToast('Participante quitado ✓');
 }
 
 async function addGastoGrupal() {
@@ -1932,23 +2081,42 @@ async function addGastoGrupal() {
   const { error: partErr } = await sb.from('gastos_grupales_participantes').insert(rows);
   if (partErr) { showToast('Error al guardar participantes: ' + partErr.message, 'error'); setBtnLoading('btn-add-grupal', false); return; }
 
-  // Insertar mi parte como gasto individual real
-  const { data: gastoData, error: gastoErr } = await sb.from('gastos').insert({
-    user_id: currentUser.id,
-    fecha,
-    descripcion: `${desc} (parte grupal — ${ggParticipantes.length + 1} personas)`,
-    monto: parteMonto,
-    moneda,
-    cat: categoria,
-    tipo: 'inusual',
-    medio,
-    notas: notas || `Gasto grupal. Total: ${moneda === 'USD' ? 'USD $' + monto : '$' + Math.round(monto).toLocaleString('es-AR')}`,
-    es_compartido: false
-  }).select().single();
-  setBtnLoading('btn-add-grupal', false);
-  if (gastoErr) { showToast('Participantes guardados pero error al registrar tu gasto: ' + gastoErr.message, 'error'); }
-  else {
-    db.gastos.unshift({...gastoData, desc: gastoData.descripcion});
+  // Insertar mi parte como gasto real — en cuotas si medio es crédito
+  const notasGasto = notas || `Gasto grupal. Total: ${moneda === 'USD' ? 'USD $' + monto : '$' + Math.round(monto).toLocaleString('es-AR')}`;
+  const descGasto = `${desc} (parte grupal — ${nTotal} personas)`;
+
+  if (medio === 'credito') {
+    const ncuotas = parseInt(document.getElementById('gg-ncuotas').value) || 1;
+    const mesInicio = parseInt(document.getElementById('gg-cuota-mes').value);
+    const anioInicio = parseInt(document.getElementById('gg-cuota-anio').value);
+    const cuotaMonto = Math.round(parteMonto / ncuotas * 100) / 100;
+    const planId = generatePlanId();
+    const cuotaRows = [];
+    for (let i = 0; i < ncuotas; i++) {
+      let m = mesInicio + i, y = anioInicio;
+      while (m > 11) { m -= 12; y++; }
+      cuotaRows.push({
+        user_id: currentUser.id,
+        fecha: `${y}-${String(m+1).padStart(2,'0')}-01`,
+        descripcion: `${descGasto} — cuota ${String(i+1).padStart(2,'0')}/${String(ncuotas).padStart(2,'0')}`,
+        monto: cuotaMonto, moneda, cat: categoria, tipo: 'inusual', medio,
+        notas: notasGasto, cuota_num: i+1, cuota_total: ncuotas,
+        cuota_monto: cuotaMonto, plan_id: planId, es_compartido: false
+      });
+    }
+    const { data: cuotasData, error: cuotasErr } = await sb.from('gastos').insert(cuotaRows).select();
+    setBtnLoading('btn-add-grupal', false);
+    if (cuotasErr) { showToast('Error al registrar cuotas: ' + cuotasErr.message, 'error'); }
+    else { (cuotasData||[]).forEach(g => db.gastos.unshift({...g, desc: g.descripcion})); }
+  } else {
+    const { data: gastoData, error: gastoErr } = await sb.from('gastos').insert({
+      user_id: currentUser.id, fecha, descripcion: descGasto,
+      monto: parteMonto, moneda, cat: categoria, tipo: 'inusual',
+      medio, notas: notasGasto, es_compartido: false
+    }).select().single();
+    setBtnLoading('btn-add-grupal', false);
+    if (gastoErr) { showToast('Error al registrar tu gasto: ' + gastoErr.message, 'error'); }
+    else { db.gastos.unshift({...gastoData, desc: gastoData.descripcion}); }
   }
 
   dbCompartido.grupales.unshift(ggData);
@@ -2041,7 +2209,8 @@ function renderGrupales() {
       </div>
       ${pendientes.length > 0 ? `<div style="font-size:12px;color:var(--warn);margin-bottom:10px">⚠️ ${pendientes.length} pago${pendientes.length!==1?'s':''} pendiente${pendientes.length!==1?'s':''}</div>` : ''}
       ${otrosHTML}
-      <div style="margin-top:10px;display:flex;justify-content:flex-end">
+      <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+        <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="abrirEditGrupal('${g.id}')">✏️ Editar participantes</button>
         <button class="del-btn" onclick="deleteGastoGrupal('${g.id}')">🗑 Eliminar</button>
       </div>
     </div>`;
