@@ -404,7 +404,7 @@
   <div class="inner-tabs">
     <button class="inner-tab active" onclick="innerTab('compartido','gastos-comp',event)">💸 Gastos compartidos</button>
     <button class="inner-tab" onclick="innerTab('compartido','vaquita',event)">🐷 Vaquita</button>
-    <button class="inner-tab" onclick="innerTab('compartido','grupales',event)">🤝 Gastos grupales</button>
+    <button class="inner-tab" onclick="innerTab('compartido','grupales',event);renderGrupales()">🤝 Gastos grupales</button>
   </div>
 
   <div id="compartido-gastos-comp" class="inner-section active">
@@ -811,7 +811,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(()=>{renderCompartido();renderGrupales();}),config:renderConfig};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -1647,7 +1647,7 @@ function showApp(){
   const today=new Date().toISOString().slice(0,10);
   ['g-fecha','i-fecha','c-fecha','vaq-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   fillMonthYearSelects('tc-month','tc-year');
-  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();loadCompartido().then(()=>{renderDashboard();renderCompartido();renderGrupales();});
+  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();loadCompartido().then(()=>{renderDashboard();renderCompartido();});
 }
 
 async function init(){
