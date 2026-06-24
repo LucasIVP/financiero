@@ -478,7 +478,7 @@
       <div class="form-group"><label>Moneda</label><select id="eg-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
       <div class="form-group"><label>Categoría</label><select id="eg-cat"></select></div>
       <div class="form-group"><label>Tipo</label><select id="eg-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
-      <div class="form-group"><label>Medio de pago</label><select id="eg-medio"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="eg-medio" onchange="toggleEditConvertir()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group"><label>Tarjeta</label><select id="eg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eg-notas" placeholder="Opcional"></div>
       <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
@@ -1145,10 +1145,7 @@ function abrirEditGasto(id) {
     (db.tarjetas||[]).map(t => `<option value="${t.id}" ${t.id===g.tarjeta_id?'selected':''}>${t.nombre}</option>`).join('');
   // Show plan note if part of a plan
   document.getElementById('eg-plan-note').style.display = g.plan_id ? 'block' : 'none';
-  // Mostrar botón convertir solo si es crédito sin plan_id
-  const esCreditoSinPlan = (g.medio === 'credito') && !g.plan_id;
-  document.getElementById('eg-convertir-note').style.display = esCreditoSinPlan ? 'block' : 'none';
-  document.getElementById('btn-eg-convertir').style.display = esCreditoSinPlan ? 'inline-flex' : 'none';
+  toggleEditConvertir();
   openModal('modal-edit-gasto');
 }
 
@@ -1190,6 +1187,14 @@ async function saveEditGasto() {
 }
 
 // CONVERTIR DESDE MODAL EDICIÓN
+function toggleEditConvertir() {
+  const medio = document.getElementById('eg-medio').value;
+  const planId = document.getElementById('eg-plan-id').value;
+  const esCreditoSinPlan = medio === 'credito' && !planId;
+  document.getElementById('eg-convertir-note').style.display = esCreditoSinPlan ? 'block' : 'none';
+  document.getElementById('btn-eg-convertir').style.display = esCreditoSinPlan ? 'inline-flex' : 'none';
+}
+
 function editarYConvertir() {
   // Tomar la tarjeta ya seleccionada en el modal de edición
   const id = document.getElementById('eg-id').value;
