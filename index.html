@@ -812,7 +812,7 @@ async function loadAllData(){
 }
 async function fetchDolarMEP(){
   try{
-    const res=await fetch('https://dolarapi.com/v1/dolares/mep');
+    const res=await fetch('https://dolarapi.com/v1/dolares/bolsa');
     if(!res.ok)return;
     const data=await res.json();
     const venta=data?.venta;
