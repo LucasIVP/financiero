@@ -173,7 +173,7 @@
   </div>
   <div class="grid-2">
     <div class="card"><div class="card-title">Distribución de gastos</div><div id="dash-cat-list"></div></div>
-    <div class="card"><div class="card-title">Últimos movimientos</div><div id="dash-ultimos"></div></div>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="card-title" style="margin-bottom:0" id="dash-ultimos-title">Movimientos del mes</div><button id="dash-ver-mas" onclick="irAGastosMes()" style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">Ver más →</button></div><div id="dash-ultimos"></div></div>
   </div>
 </div>
 
@@ -190,7 +190,8 @@
 
   <!-- Tab: Mes -->
   <div id="gastos-gastos-mes" class="inner-section active">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:10px;align-items:center">
+      <select id="g-cat-filter" onchange="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todas las categorías</option></select>
       <div class="month-selector"><select id="g-month" onchange="renderGastos()"></select><select id="g-year" onchange="renderGastos()"></select></div>
     </div>
     <div class="card" style="margin-bottom:20px">
@@ -246,6 +247,9 @@
             <select id="h-hasta-month" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"></select>
             <select id="h-hasta-year" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"></select>
           </div>
+        </div>
+        <div class="form-group"><label>Categoría</label>
+          <select id="h-cat-filter" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"><option value="">Todas</option></select>
         </div>
         <button class="btn btn-primary" onclick="renderHistorial()">Ver historial</button>
       </div>
@@ -962,7 +966,9 @@ function clearGastoForm(){
 async function deleteGasto(id){const{error}=await sb.from('gastos').delete().eq('id',id);if(error){showToast(error.message,'error');return;}db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();showToast('Eliminado');}
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
-  const gastos=filterByMonth(db.gastos,month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const catFilter=document.getElementById('g-cat-filter')?.value||'';
+  let gastos=filterByMonth(db.gastos,month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(catFilter) gastos=gastos.filter(g=>g.cat===catFilter);
   document.getElementById('g-table-title').textContent=`Gastos — ${MONTHS[month]} ${year}`;
   const total=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
   document.getElementById('g-total-badge').textContent=gastos.length>0?`Total: ${fmtARS(total)}`:'';
@@ -1390,9 +1396,10 @@ function renderHistorial() {
   const desdeDate = new Date(desdeY, desdeM, 1);
   const hastaDate = new Date(hastaY, hastaM + 1, 0);
 
+  const catFilterH = document.getElementById('h-cat-filter')?.value||'';
   const gastos = db.gastos.filter(g => {
     const d = new Date(g.fecha + 'T12:00:00');
-    return d >= desdeDate && d <= hastaDate;
+    return d >= desdeDate && d <= hastaDate && (!catFilterH || g.cat === catFilterH);
   }).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   document.getElementById('h-table-title').textContent =
@@ -1606,6 +1613,13 @@ async function deleteCat(id){
   db.categorias=db.categorias.filter(c=>c.id!==id);renderConfig();populateCatSelects();showToast('Eliminada');
 }
 function populateCatSelects(){
+  // Populate category filter dropdowns
+  ['g-cat-filter','h-cat-filter'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    const current=el.value;
+    el.innerHTML='<option value="">Todas las categorías</option>'+db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');
+    if(current)el.value=current;
+  });
   ['g-cat','c-cat','comp-cat','gg-cat'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');});
 }
 
@@ -1671,9 +1685,11 @@ function renderDashboard(){
   const lab=[],gD=[],iD=[];for(let k=5;k>=0;k--){let m=month-k,y=year;if(m<0){m+=12;y--;}lab.push(MONTHS[m].slice(0,3));gD.push(filterByMonth(db.gastos,m,y).reduce((s,g)=>s+gastoEfectivo(g,m,y),0));iD.push(filterByMonth(db.ingresos,m,y).reduce((s,i)=>s+toARS(i.monto,i.moneda),0));}
   const ctx2=document.getElementById('chart-evol').getContext('2d');if(chartEvol)chartEvol.destroy();
   chartEvol=new Chart(ctx2,{type:'line',data:{labels:lab,datasets:[{label:'Gastos',data:gD,borderColor:'#ff4d6d',backgroundColor:'rgba(255,77,109,0.1)',fill:true,tension:0.4,pointRadius:4},{label:'Ingresos',data:iD,borderColor:'#00d4aa',backgroundColor:'rgba(0,212,170,0.1)',fill:true,tension:0.4,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:'#7b7f9e'}},y:{ticks:{color:'#7b7f9e',callback:v=>'$'+Math.round(v/1000)+'k'}}},plugins:{legend:{labels:{color:'#7b7f9e',font:{size:12}}}}}});
-  document.getElementById('dash-cat-list').innerHTML=sc.length===0?'<div class="empty-state">Sin gastos este mes</div>':sc.map(([cat,val])=>{const catObj=db.categorias.find(c=>c.name===cat)||{emoji:'📄'};const pct=tG>0?Math.round(val/tG*100):0;return`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${catObj.emoji} ${cat}</span><span style="font-weight:600">${fmtARS(val)} <span style="color:var(--muted);font-weight:400">(${pct}%)</span></span></div><div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${catColor(cat)}"></div></div></div>`;}).join('');
-  const ult=[...db.gastos].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,5);
-  document.getElementById('dash-ultimos').innerHTML=ult.length===0?'<div class="empty-state">Sin movimientos recientes</div>':ult.map(g=>{const d=new Date(g.fecha+'T12:00:00');const montoEf=gastoEfectivo(g,d.getMonth(),d.getFullYear());const catObj=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄'};const esGrupalD=(g.desc||g.descripcion||'').includes('(parte grupal');return`<div class="summary-row"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">${catObj.emoji}</span><div><div style="font-size:14px;font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupalD?' <span style="font-size:11px;color:var(--warn)">🤝</span>':''}</div><div style="font-size:12px;color:var(--muted)">${g.fecha} · ${g.cat}</div></div></div><span class="amount-negative" style="font-weight:600">${fmtARS(montoEf)}</span></div>`;}).join('');
+  document.getElementById('dash-cat-list').innerHTML=sc.length===0?'<div class="empty-state">Sin gastos este mes</div>':sc.map(([cat,val])=>{const catObj=db.categorias.find(c=>c.name===cat)||{emoji:'📄'};const pct=tG>0?Math.round(val/tG*100):0;return`<div style="margin-bottom:12px;cursor:pointer" onclick="irAGastosConCat('${cat.replace(/'/g,"\\'")}',${month},${year})" title="Ver gastos de ${cat.replace(/'/g,"\\'")}"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${catObj.emoji} ${cat}</span><span style="font-weight:600">${fmtARS(val)} <span style="color:var(--muted);font-weight:400">(${pct}%)</span></span></div><div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${catColor(cat)}"></div></div></div>`;}).join('');
+  // Últimos movimientos del mes seleccionado
+  document.getElementById('dash-ultimos-title').textContent=`Movimientos — ${MONTHS[month]} ${year}`;
+  const ultMes=gastos.sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,5);
+  document.getElementById('dash-ultimos').innerHTML=(ultMes.length===0?'<div class="empty-state">Sin movimientos este mes</div>':ultMes.map(g=>{const montoEf=gastoEfectivo(g,month,year);const catObj=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄'};const esGrupalD=(g.desc||g.descripcion||'').includes('(parte grupal');return`<div class="summary-row"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">${catObj.emoji}</span><div><div style="font-size:14px;font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupalD?' <span style="font-size:11px;color:var(--warn)">🤝</span>':''}</div><div style="font-size:12px;color:var(--muted)">${g.fecha} · ${g.cat}</div></div></div><span class="amount-negative" style="font-weight:600">${fmtARS(montoEf)}</span></div>`;}).join(''))+(gastos.length>5?`<div style="text-align:center;margin-top:10px"><button onclick="irAGastosMes(${month},${year})" style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer">Ver todos los movimientos (${gastos.length}) →</button></div>`:'');
 }
 
 // INIT
@@ -2411,6 +2427,37 @@ function renderPrestamos() {
       ${itemsHTML}
     </div>`;
   }).join('');
+}
+
+
+// NAVEGACIÓN DESDE DASHBOARD
+function irAGastosMes(month, year) {
+  // Si se pasan mes/año, aplicarlos; si no, usar el del dashboard
+  if (month !== undefined && year !== undefined) {
+    const ms = document.getElementById('g-month');
+    const ys = document.getElementById('g-year');
+    if (ms) ms.value = month;
+    if (ys) ys.value = year;
+  }
+  const catFilter = document.getElementById('g-cat-filter');
+  if (catFilter) catFilter.value = '';
+  goTo('gastos');
+  // Asegurar que esté en tab Mes
+  const mesTab = document.querySelector('#page-gastos .inner-tab');
+  if (mesTab) mesTab.click();
+}
+
+function irAGastosConCat(cat, month, year) {
+  const ms = document.getElementById('g-month');
+  const ys = document.getElementById('g-year');
+  if (ms) ms.value = month;
+  if (ys) ys.value = year;
+  goTo('gastos');
+  // Apply category filter after nav
+  setTimeout(() => {
+    const cf = document.getElementById('g-cat-filter');
+    if (cf) { cf.value = cat; renderGastos(); }
+  }, 50);
 }
 
 init();
