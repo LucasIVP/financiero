@@ -951,15 +951,19 @@ function renderTarjetas() {
     planes[g.plan_id].push(g);
   });
 
+  const selectedYM = `${year}-${String(month+1).padStart(2,'0')}`;
+  const hoyYM2 = new Date().toISOString().slice(0, 7);
   const planesArr = Object.values(planes).map(cuotas => {
     cuotas.sort((a, b) => a.fecha.localeCompare(b.fecha));
     const primera = cuotas[0];
     const ultima = cuotas[cuotas.length - 1];
-    const hoy = new Date().toISOString().slice(0, 7);
-    const pagadas = cuotas.filter(g => g.fecha.slice(0, 7) <= hoy).length;
+    // pagadas = cuotas hasta el mes seleccionado (no necesariamente hoy)
+    const pagadas = cuotas.filter(g => g.fecha.slice(0, 7) <= selectedYM).length;
+    const pagadasHoy = cuotas.filter(g => g.fecha.slice(0, 7) <= hoyYM2).length;
     const tarjeta = db.tarjetas?.find(t => t.id === primera.tarjeta_id);
-    return { cuotas, primera, ultima, pagadas, tarjeta, total: primera.cuota_monto * cuotas.length, cuotaMonto: primera.cuota_monto, ncuotas: primera.cuota_total };
-  }).filter(p => p.pagadas < p.ncuotas);
+    const nombre = (primera.desc || primera.descripcion || '').split(' — cuota')[0];
+    return { cuotas, primera, ultima, pagadas, pagadasHoy, tarjeta, nombre, total: primera.cuota_monto * cuotas.length, cuotaMonto: primera.cuota_monto, ncuotas: primera.cuota_total };
+  }).filter(p => p.pagadasHoy < p.ncuotas);
 
   // KPIs
   const gastosTC = db.gastos.filter(g => {
@@ -986,7 +990,7 @@ function renderTarjetas() {
       const color = p.tarjeta?.color || 'var(--accent)';
       return `<div class="cuota-card" style="border-left:3px solid ${color}">
         <div class="cuota-header">
-          <span class="cuota-name">${p.primera.desc || p.primera.descripcion.replace(/ — cuota \d+\/\d+$/, '')}</span>
+          <span class="cuota-name">${p.nombre}</span>
           <button class="del-btn" onclick="deletePlanCuotas('${p.primera.plan_id}')">🗑</button>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${p.tarjeta ? `<span style="color:${color}">${p.tarjeta.nombre}</span> · ` : ''}${p.primera.moneda === 'USD' ? fmtUSD(p.cuotaMonto) : fmtARS(p.cuotaMonto)}/mes · Total: ${p.primera.moneda === 'USD' ? fmtUSD(p.total) : fmtARS(p.total)}</div>
