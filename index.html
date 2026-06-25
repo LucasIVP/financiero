@@ -608,6 +608,18 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-delete-plan">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><span class="modal-title">🗑️ Eliminar gasto en cuotas</span><button class="modal-close" onclick="closeModal('modal-delete-plan')">×</button></div>
+    <p id="mdp-msg" style="font-size:14px;color:var(--text);margin-bottom:20px;line-height:1.5"></p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-danger" id="mdp-btn-plan" onclick="confirmDeletePlan('plan')">🗑️ Eliminar todo el plan</button>
+      <button class="btn btn-ghost" id="mdp-btn-one" onclick="confirmDeletePlan('one')">Eliminar solo esta cuota</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-delete-plan')" style="color:var(--muted)">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-convertir-tc">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">💳 Convertir a plan de cuotas</span><button class="modal-close" onclick="closeModal('modal-convertir-tc')">×</button></div>
@@ -978,35 +990,37 @@ function clearGastoForm(){
   const ncuotas=document.getElementById('g-ncuotas');
   if(ncuotas)ncuotas.value='1';
 }
+let _deletePlanCtx={id:null,planId:null,total:0};
 async function deleteGasto(id){
   const gasto=db.gastos.find(g=>g.id===id);
   if(!gasto){showToast('Gasto no encontrado','error');return;}
-
-  // Si es parte de un plan de cuotas, preguntar qué borrar
   if(gasto.plan_id){
     const planId=gasto.plan_id;
-    const totalCuotas=db.gastos.filter(g=>g.plan_id===planId).length;
-    const confirmPlan=confirm(`Este gasto es la cuota ${gasto.cuota_num||'?'}/${gasto.cuota_total||totalCuotas} de un plan.\n\nOpciones:\n• Aceptar → borrar TODAS las cuotas del plan (${totalCuotas} gastos)\n• Cancelar → borrar solo esta cuota`);
-    if(confirmPlan){
-      // Borrar todo el plan
-      const{error}=await sb.from('gastos').delete().eq('plan_id',planId).eq('user_id',currentUser.id);
-      if(error){showToast(error.message,'error');return;}
-      db.gastos=db.gastos.filter(g=>g.plan_id!==planId);
-      renderGastos();renderDashboard();renderTarjetas();showToast(`Plan eliminado (${totalCuotas} cuotas) ✓`);
-    }else{
-      // Borrar solo esta cuota
-      const{error}=await sb.from('gastos').delete().eq('id',id);
-      if(error){showToast(error.message,'error');return;}
-      db.gastos=db.gastos.filter(g=>g.id!==id);
-      renderGastos();renderDashboard();renderTarjetas();showToast('Cuota eliminada');
-    }
+    const total=db.gastos.filter(g=>g.plan_id===planId).length;
+    _deletePlanCtx={id,planId,total};
+    document.getElementById('mdp-msg').innerHTML=
+      `<strong>${(gasto.desc||gasto.descripcion||'').split(' —')[0]}</strong><br><span style="color:var(--muted)">Cuota ${gasto.cuota_num||'?'}/${gasto.cuota_total||total} · ${total} cuotas en total</span><br><br>¿Qué querés eliminar?`;
+    openModal('modal-delete-plan');
     return;
   }
-
-  // Gasto normal sin plan
   const{error}=await sb.from('gastos').delete().eq('id',id);
   if(error){showToast(error.message,'error');return;}
   db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();showToast('Eliminado');
+}
+async function confirmDeletePlan(mode){
+  closeModal('modal-delete-plan');
+  const{id,planId,total}=_deletePlanCtx;
+  if(mode==='plan'){
+    const{error}=await sb.from('gastos').delete().eq('plan_id',planId).eq('user_id',currentUser.id);
+    if(error){showToast(error.message,'error');return;}
+    db.gastos=db.gastos.filter(g=>g.plan_id!==planId);
+    renderGastos();renderDashboard();renderTarjetas();showToast(`Plan eliminado (${total} cuotas) ✓`);
+  }else{
+    const{error}=await sb.from('gastos').delete().eq('id',id);
+    if(error){showToast(error.message,'error');return;}
+    db.gastos=db.gastos.filter(g=>g.id!==id);
+    renderGastos();renderDashboard();renderTarjetas();showToast('Cuota eliminada');
+  }
 }
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
