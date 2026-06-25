@@ -1598,7 +1598,7 @@ function renderConfig(){
   document.getElementById('cfg-dolar').value=cfg.dolar||'';document.getElementById('cfg-dolar-fecha').value=cfg.dolar_fecha||'';
   document.getElementById('cfg-obj-ingreso').value=cfg.obj_ingreso||'';document.getElementById('cfg-obj-ahorro').value=cfg.obj_ahorro||'';
   document.getElementById('cfg-obj-regular').value=cfg.obj_regular||'';document.getElementById('cfg-obj-inusual').value=cfg.obj_inusual||'';
-  document.getElementById('cat-list').innerHTML=db.categorias.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px">${c.emoji}</span><span style="flex:1;font-size:14px">${c.name}</span><button class="del-btn" onclick="deleteCat('${c.id}')">🗑</button></div>`).join('');
+  document.getElementById('cat-list').innerHTML=db.categorias.map(c=>`<div id="cat-row-${c.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px">${c.emoji}</span><span style="flex:1;font-size:14px">${c.name}</span><button class="del-btn" title="Editar" onclick="toggleEditCat('${c.id}','${c.name.replace(/'/g,"\\'")}','${c.emoji}')">✏️</button><button class="del-btn" onclick="deleteCat('${c.id}')">🗑</button></div><div id="cat-edit-${c.id}" style="display:none;padding:6px 0 10px 0;border-bottom:1px solid var(--border);gap:8px;align-items:center;flex-wrap:wrap"><input id="cat-edit-emoji-${c.id}" type="text" value="${c.emoji}" style="width:54px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);outline:none;text-align:center;font-size:16px"><input id="cat-edit-name-${c.id}" type="text" value="${c.name}" style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);outline:none;font-size:14px"><button class="btn btn-primary" style="padding:7px 14px;font-size:13px" onclick="saveCat('${c.id}')">Guardar</button><button class="btn btn-ghost" style="padding:7px 14px;font-size:13px" onclick="toggleEditCat('${c.id}')">Cancelar</button></div>`).join('');
 }
 async function addCategory(){
   const name=document.getElementById('new-cat-name').value.trim(),emoji=document.getElementById('new-cat-emoji').value.trim()||'📄';
@@ -1611,6 +1611,30 @@ async function deleteCat(id){
   const{error}=await sb.from('categorias').delete().eq('id',id);
   if(error){showToast(error.message,'error');return;}
   db.categorias=db.categorias.filter(c=>c.id!==id);renderConfig();populateCatSelects();showToast('Eliminada');
+}
+function toggleEditCat(id,name,emoji){
+  const editDiv=document.getElementById('cat-edit-'+id);
+  if(!editDiv)return;
+  const isOpen=editDiv.style.display==='flex';
+  // Close all open edit rows first
+  document.querySelectorAll('[id^="cat-edit-"]').forEach(el=>el.style.display='none');
+  if(!isOpen){
+    editDiv.style.display='flex';
+    const nameInput=document.getElementById('cat-edit-name-'+id);
+    if(nameInput)nameInput.focus();
+  }
+}
+async function saveCat(id){
+  const nameInput=document.getElementById('cat-edit-name-'+id);
+  const emojiInput=document.getElementById('cat-edit-emoji-'+id);
+  if(!nameInput||!emojiInput)return;
+  const name=nameInput.value.trim(),emoji=emojiInput.value.trim()||'📄';
+  if(!name){showToast('El nombre no puede estar vacío','error');return;}
+  const{error}=await sb.from('categorias').update({name,emoji}).eq('id',id);
+  if(error){showToast(error.message,'error');return;}
+  const idx=db.categorias.findIndex(c=>c.id===id);
+  if(idx!==-1){db.categorias[idx].name=name;db.categorias[idx].emoji=emoji;}
+  renderConfig();populateCatSelects();showToast('Categoría actualizada ✓');
 }
 function populateCatSelects(){
   // Populate category filter dropdowns
