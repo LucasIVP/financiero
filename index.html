@@ -1755,10 +1755,26 @@ async function loadCompartido() {
 
 function calcProporcionMes(month, year) {
   const dolar = db.config.dolar || 1;
-  const ingresosMes = dbCompartido.ingresos.filter(i => {
+
+  // Buscar ingresos del mes pedido
+  const ingresosParaMes = (m, y) => dbCompartido.ingresos.filter(i => {
     const d = new Date(i.fecha + 'T12:00:00');
-    return d.getMonth() === month && d.getFullYear() === year;
+    return d.getMonth() === m && d.getFullYear() === y;
   });
+
+  let ingresosMes = ingresosParaMes(month, year);
+  let usandoFallback = false;
+
+  // Si no hay ingresos, buscar el último mes con ingresos declarados (hasta 12 meses atrás)
+  if (ingresosMes.length === 0) {
+    for (let k = 1; k <= 12; k++) {
+      let m = month - k, y = year;
+      while (m < 0) { m += 12; y--; }
+      const anterior = ingresosParaMes(m, y);
+      if (anterior.length > 0) { ingresosMes = anterior; usandoFallback = true; break; }
+    }
+  }
+
   const miIngreso = ingresosMes.filter(i => i.user_id === currentUser.id)
     .reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
   const otroIngreso = ingresosMes.filter(i => i.user_id !== currentUser.id)
@@ -1767,7 +1783,8 @@ function calcProporcionMes(month, year) {
   return {
     miIngreso, otroIngreso, total,
     propYo: total > 0 ? miIngreso / total : 0.5,
-    propOtro: total > 0 ? otroIngreso / total : 0.5
+    propOtro: total > 0 ? otroIngreso / total : 0.5,
+    usandoFallback
   };
 }
 
@@ -1775,20 +1792,21 @@ function renderCompartido() {
   const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
   document.getElementById('compartido-subtitle').textContent = `${MONTHS[month]} ${year}`;
 
-  const { miIngreso, otroIngreso, total: totalIng, propYo, propOtro } = calcProporcionMes(month, year);
+  const { miIngreso, otroIngreso, total: totalIng, propYo, propOtro, usandoFallback } = calcProporcionMes(month, year);
   const pctYo = Math.round(propYo * 100);
   const pctOtro = 100 - pctYo;
 
   // Panel proporcional
   const elProp = document.getElementById('comp-proporcion-result');
   if (totalIng > 0) {
-    elProp.innerHTML = `<div style="display:flex;gap:24px;flex-wrap:wrap">
+    elProp.innerHTML = `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
       <div><span style="color:var(--text);font-weight:600">Yo</span> <span style="margin-left:6px">${fmtARS(miIngreso)} (${pctYo}%)</span></div>
       <div><span style="color:var(--text);font-weight:600">Pareja</span> <span style="margin-left:6px">${fmtARS(otroIngreso)} (${pctOtro}%)</span></div>
       <div style="margin-left:auto;color:var(--accent2);font-weight:600">Total combinado: ${fmtARS(totalIng)}</div>
+      ${usandoFallback ? `<div style="width:100%;font-size:12px;color:var(--warn)">⚠️ Sin ingresos declarados este mes — usando el último porcentual conocido (${pctYo}% / ${pctOtro}%)</div>` : ''}
     </div>`;
   } else {
-    elProp.textContent = 'Cargá ingresos en la pestaña Ingresos para ver el proporcional.';
+    elProp.textContent = 'No se encontraron ingresos declarados. Cargá ingresos en la pestaña Ingresos.';
   }
 
   // Gastos compartidos del mes
