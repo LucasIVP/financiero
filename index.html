@@ -593,6 +593,21 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-edit-cat">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">✏️ Editar categoría</span><button class="modal-close" onclick="closeModal('modal-edit-cat')">×</button></div>
+    <input type="hidden" id="ec-id">
+    <div class="form-grid" style="grid-template-columns:80px 1fr">
+      <div class="form-group"><label>Ícono</label><input type="text" id="ec-emoji" style="text-align:center;font-size:20px"></div>
+      <div class="form-group"><label>Nombre</label><input type="text" id="ec-name" placeholder="Nombre de la categoría"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-cat')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCat()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-convertir-tc">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">💳 Convertir a plan de cuotas</span><button class="modal-close" onclick="closeModal('modal-convertir-tc')">×</button></div>
@@ -963,7 +978,36 @@ function clearGastoForm(){
   const ncuotas=document.getElementById('g-ncuotas');
   if(ncuotas)ncuotas.value='1';
 }
-async function deleteGasto(id){const{error}=await sb.from('gastos').delete().eq('id',id);if(error){showToast(error.message,'error');return;}db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();showToast('Eliminado');}
+async function deleteGasto(id){
+  const gasto=db.gastos.find(g=>g.id===id);
+  if(!gasto){showToast('Gasto no encontrado','error');return;}
+
+  // Si es parte de un plan de cuotas, preguntar qué borrar
+  if(gasto.plan_id){
+    const planId=gasto.plan_id;
+    const totalCuotas=db.gastos.filter(g=>g.plan_id===planId).length;
+    const confirmPlan=confirm(`Este gasto es la cuota ${gasto.cuota_num||'?'}/${gasto.cuota_total||totalCuotas} de un plan.\n\nOpciones:\n• Aceptar → borrar TODAS las cuotas del plan (${totalCuotas} gastos)\n• Cancelar → borrar solo esta cuota`);
+    if(confirmPlan){
+      // Borrar todo el plan
+      const{error}=await sb.from('gastos').delete().eq('plan_id',planId).eq('user_id',currentUser.id);
+      if(error){showToast(error.message,'error');return;}
+      db.gastos=db.gastos.filter(g=>g.plan_id!==planId);
+      renderGastos();renderDashboard();renderTarjetas();showToast(`Plan eliminado (${totalCuotas} cuotas) ✓`);
+    }else{
+      // Borrar solo esta cuota
+      const{error}=await sb.from('gastos').delete().eq('id',id);
+      if(error){showToast(error.message,'error');return;}
+      db.gastos=db.gastos.filter(g=>g.id!==id);
+      renderGastos();renderDashboard();renderTarjetas();showToast('Cuota eliminada');
+    }
+    return;
+  }
+
+  // Gasto normal sin plan
+  const{error}=await sb.from('gastos').delete().eq('id',id);
+  if(error){showToast(error.message,'error');return;}
+  db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();showToast('Eliminado');
+}
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const catFilter=document.getElementById('g-cat-filter')?.value||'';
@@ -1598,7 +1642,7 @@ function renderConfig(){
   document.getElementById('cfg-dolar').value=cfg.dolar||'';document.getElementById('cfg-dolar-fecha').value=cfg.dolar_fecha||'';
   document.getElementById('cfg-obj-ingreso').value=cfg.obj_ingreso||'';document.getElementById('cfg-obj-ahorro').value=cfg.obj_ahorro||'';
   document.getElementById('cfg-obj-regular').value=cfg.obj_regular||'';document.getElementById('cfg-obj-inusual').value=cfg.obj_inusual||'';
-  document.getElementById('cat-list').innerHTML=db.categorias.map(c=>`<div id="cat-row-${c.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px">${c.emoji}</span><span style="flex:1;font-size:14px">${c.name}</span><button class="del-btn" title="Editar" onclick="toggleEditCat('${c.id}')">✏️</button><button class="del-btn" onclick="deleteCat('${c.id}')">🗑</button></div><div id="cat-edit-${c.id}" style="display:none;width:100%;padding:8px 0 12px 0;border-bottom:1px solid var(--border)"><div style="display:grid;grid-template-columns:60px 1fr auto auto;gap:8px;align-items:center"><input id="cat-edit-emoji-${c.id}" type="text" value="${c.emoji}" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);outline:none;text-align:center;font-size:16px;width:100%"><input id="cat-edit-name-${c.id}" type="text" value="${c.name}" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);outline:none;font-size:14px;width:100%"><button class="btn btn-primary" style="padding:7px 14px;font-size:13px;white-space:nowrap" onclick="saveCat('${c.id}')">Guardar</button><button class="btn btn-ghost" style="padding:7px 14px;font-size:13px;white-space:nowrap" onclick="toggleEditCat('${c.id}')">Cancelar</button></div></div>`).join('');
+  document.getElementById('cat-list').innerHTML=db.categorias.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px">${c.emoji}</span><span style="flex:1;font-size:14px">${c.name}</span><button class="del-btn" title="Editar" onclick="abrirEditCat('${c.id}')">✏️</button><button class="del-btn" onclick="deleteCat('${c.id}')">🗑</button></div>`).join('');
 }
 async function addCategory(){
   const name=document.getElementById('new-cat-name').value.trim(),emoji=document.getElementById('new-cat-emoji').value.trim()||'📄';
@@ -1612,28 +1656,25 @@ async function deleteCat(id){
   if(error){showToast(error.message,'error');return;}
   db.categorias=db.categorias.filter(c=>c.id!==id);renderConfig();populateCatSelects();showToast('Eliminada');
 }
-function toggleEditCat(id){
-  const editDiv=document.getElementById('cat-edit-'+id);
-  if(!editDiv)return;
-  const isOpen=editDiv.style.display==='block';
-  // Close all open edit rows first
-  document.querySelectorAll('[id^="cat-edit-"]').forEach(el=>el.style.display='none');
-  if(!isOpen){
-    editDiv.style.display='block';
-    const nameInput=document.getElementById('cat-edit-name-'+id);
-    if(nameInput)nameInput.focus();
-  }
+function abrirEditCat(id){
+  const cat=db.categorias.find(c=>c.id===id);
+  if(!cat)return;
+  document.getElementById('ec-id').value=id;
+  document.getElementById('ec-emoji').value=cat.emoji||'📄';
+  document.getElementById('ec-name').value=cat.name||'';
+  openModal('modal-edit-cat');
+  setTimeout(()=>document.getElementById('ec-name').focus(),100);
 }
-async function saveCat(id){
-  const nameInput=document.getElementById('cat-edit-name-'+id);
-  const emojiInput=document.getElementById('cat-edit-emoji-'+id);
-  if(!nameInput||!emojiInput)return;
-  const name=nameInput.value.trim(),emoji=emojiInput.value.trim()||'📄';
+async function saveCat(){
+  const id=document.getElementById('ec-id').value;
+  const name=document.getElementById('ec-name').value.trim();
+  const emoji=document.getElementById('ec-emoji').value.trim()||'📄';
   if(!name){showToast('El nombre no puede estar vacío','error');return;}
   const{error}=await sb.from('categorias').update({name,emoji}).eq('id',id);
   if(error){showToast(error.message,'error');return;}
   const idx=db.categorias.findIndex(c=>c.id===id);
   if(idx!==-1){db.categorias[idx].name=name;db.categorias[idx].emoji=emoji;}
+  closeModal('modal-edit-cat');
   renderConfig();populateCatSelects();showToast('Categoría actualizada ✓');
 }
 function populateCatSelects(){
