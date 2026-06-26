@@ -1069,7 +1069,7 @@ function renderSuscripciones() {
       <td>${finLabel}</td>
       <td style="white-space:nowrap">
         <button class="del-btn" style="margin-right:2px" onclick="abrirEditSuscripcion('${g.id}')">✏️</button>
-        ${activa?`<button class="del-btn" title="Dar de baja" onclick="darDeBajaSuscripcion('${g.id}')">⏹</button>`:''}
+        ${activa?`<button class="del-btn" title="Dar de baja suscripción" onclick="darDeBajaSuscripcion('${g.id}')" style="color:#ff4d6d;font-size:13px;font-weight:700">✕</button>`:''}
       </td>
     </tr>`;
   }).join('');
@@ -1308,9 +1308,9 @@ function renderGastos(){
     const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);
     const esGrupal=(g.desc||g.descripcion||'').includes('(parte grupal');
     const recBadge=g.recurrente?` <span style="font-size:11px;color:var(--accent)" title="Suscripción recurrente">🔁</span>`:'';
-    const bajaBtnMes=g.recurrente?`<button class="del-btn" title="Dar de baja" onclick="darDeBajaSuscripcion('${g.id}')">⏹</button>`:'';
+    const bajaBtnMes=g.recurrente?`<button class="del-btn" title="Dar de baja suscripción" onclick="darDeBajaSuscripcion('${g.id}')" style="color:#ff4d6d;font-size:13px;font-weight:700">✕</button>`:'';
     const acciones=g.user_id===currentUser.id
-      ?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button>${bajaBtnMes||`<button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`}`
+      ?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" style="margin-right:2px" onclick="deleteGasto('${g.id}')">🗑</button>${bajaBtnMes}`
       :'<span style="font-size:11px;color:var(--muted)">ajeno</span>';
     return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
