@@ -167,6 +167,7 @@
     </div>
   </div>
   <div class="grid-4" id="dash-kpis"></div>
+  <div id="dash-objetivos" style="margin-bottom:20px"></div>
   <div class="grid-2">
     <div class="card"><div class="card-title">Gastos por categoría</div><div class="chart-container" style="height:220px"><canvas id="chart-cat"></canvas></div></div>
     <div class="card"><div class="card-title">Evolución mensual</div><div class="chart-container" style="height:220px"><canvas id="chart-evol"></canvas></div></div>
@@ -297,6 +298,7 @@
     </div>
   </div>
 </div>
+<div id="page-ingresos" class="page">
   <div class="section-header">
     <div class="section-title">💵 Ingresos</div>
     <div class="month-selector"><select id="i-month" onchange="renderIngresos()"></select><select id="i-year" onchange="renderIngresos()"></select></div>
@@ -2126,6 +2128,73 @@ function gastoEfectivo(g, month, year) {
   return toARS(g.monto, g.moneda) * propYo;
 }
 
+function renderObjetivosDashboard(tI, tG, bal) {
+  const el = document.getElementById('dash-objetivos');
+  if (!el) return;
+  const cfg = db.config;
+  const objIngreso = cfg.obj_ingreso || 0;
+  const pctAhorro = cfg.obj_ahorro || 20;
+  if (!objIngreso) { el.innerHTML = ''; return; } // sin objetivo configurado, no mostrar
+
+  // Calcular valores objetivo
+  const ingresoRef = tI > 0 ? tI : objIngreso; // usar ingreso real si existe, sino el objetivo
+  const ahorroObjetivo = ingresoRef * (pctAhorro / 100);
+  const gastoMaximo = ingresoRef - ahorroObjetivo;
+  const ahorroReal = tI > 0 ? bal : null; // solo calculable si hay ingresos reales
+  const gastoPct = gastoMaximo > 0 ? Math.min(Math.round(tG / gastoMaximo * 100), 100) : 0;
+  const sinIngresos = tI === 0;
+
+  // Color de la barra de gasto según qué tan cerca está del techo
+  const barColor = gastoPct >= 100 ? 'var(--red)' : gastoPct >= 85 ? 'var(--warn)' : 'var(--green)';
+
+  // Ingreso de referencia usado
+  const ingresoLabel = sinIngresos
+    ? `<span style="color:var(--warn);font-size:12px">⚠️ Sin ingresos declarados — usando ingreso objetivo (${fmtARS(objIngreso)})</span>`
+    : `<span style="color:var(--muted);font-size:12px">Basado en tus ingresos reales del mes</span>`;
+
+  // Ahorro real vs objetivo
+  let ahorroStatus = '';
+  if (!sinIngresos) {
+    const ahorroRealPct = tI > 0 ? Math.round(bal / tI * 100) : 0;
+    const cumple = bal >= ahorroObjetivo;
+    ahorroStatus = `<div style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <span style="${cumple ? 'color:var(--green)' : 'color:var(--red)'};font-weight:700;font-size:16px">${cumple ? '✓' : '✗'}</span>
+      <span>Ahorro real: <strong>${fmtARS(bal)}</strong> (${ahorroRealPct}%) — objetivo: ${fmtARS(ahorroObjetivo)} (${pctAhorro}%)</span>
+    </div>`;
+  } else {
+    ahorroStatus = `<div style="font-size:13px;color:var(--muted)">Cargá tus ingresos para ver el ahorro real</div>`;
+  }
+
+  el.innerHTML = `<div class="card" style="border-color:rgba(108,99,255,0.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-weight:600;font-size:14px">🎯 Objetivos del mes</div>
+      ${ingresoLabel}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+          <span style="color:var(--muted)">Gasto vs techo permitido</span>
+          <span style="font-weight:600;color:${barColor}">${fmtARS(tG)} / ${fmtARS(gastoMaximo)}</span>
+        </div>
+        <div class="progress-wrap" style="height:10px;margin-bottom:6px">
+          <div class="progress-bar" style="width:${gastoPct}%;background:${barColor}"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">
+          ${gastoPct < 100
+            ? `Margen restante: <span style="color:var(--green);font-weight:600">${fmtARS(gastoMaximo - tG)}</span>`
+            : `<span style="color:var(--red);font-weight:600">⚠️ Superaste el techo de gasto</span>`}
+        </div>
+      </div>
+      <div>
+        ${ahorroStatus}
+        <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+          Techo de gasto = Ingreso ${sinIngresos?'objetivo':'real'} − ${pctAhorro}% ahorro = <strong>${fmtARS(gastoMaximo)}</strong>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderDashboard(){
   const{month,year}=getSelectedMonthYear('dash-month','dash-year');
   document.getElementById('dash-subtitle').textContent=`${MONTHS[month]} ${year}`;
@@ -2144,6 +2213,7 @@ function renderDashboard(){
   const nPlanesActivos=planesActivos.length;
   const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
   document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${bal>=0?'amount-positive':'amount-negative'}">${fmtARS(bal)}</div><div class="card-sub">${bal>=0?'Superávit 🎉':'Déficit ⚠️'}</div></div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
+  renderObjetivosDashboard(tI, tG, bal);
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const ctx1=document.getElementById('chart-cat').getContext('2d');if(chartCat)chartCat.destroy();
