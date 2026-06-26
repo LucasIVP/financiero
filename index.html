@@ -186,6 +186,7 @@
   <div class="inner-tabs">
     <button class="inner-tab active" onclick="innerTab('gastos','gastos-mes',event)">📋 Mes</button>
     <button class="inner-tab" onclick="innerTab('gastos','gastos-historial',event)">📅 Historial</button>
+    <button class="inner-tab" onclick="innerTab('gastos','gastos-suscripciones',event);renderSuscripciones()">🔁 Suscripciones</button>
   </div>
 
   <!-- Tab: Mes -->
@@ -201,12 +202,23 @@
         <div class="form-group"><label>Descripción</label><input type="text" id="g-desc" placeholder="Ej: Supermercado"></div>
         <div class="form-group"><label>Monto</label><input type="number" id="g-monto" placeholder="0" min="0"></div>
         <div class="form-group"><label>Moneda</label><select id="g-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-        <div class="form-group"><label>Categoría</label><select id="g-cat"></select></div>
+        <div class="form-group"><label>Categoría</label><select id="g-cat" onchange="onCatChangeGasto()"></select></div>
         <div class="form-group"><label>Tipo</label><select id="g-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
         <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
         <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
         <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
         <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
+        <div class="form-group" id="g-recurrente-field" style="grid-column:1/-1;display:none">
+          <div style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px;padding:14px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+              <input type="checkbox" id="g-recurrente" style="width:16px;height:16px;accent-color:var(--accent)" onchange="toggleRecurrenteOpts('g')">
+              <span style="color:var(--accent);font-weight:600">🔁 Pago recurrente (se replica automáticamente mes a mes)</span>
+            </label>
+            <div id="g-recurrente-opts" style="display:none;font-size:13px;color:var(--muted);margin-top:4px">
+              La suscripción se cargará en todos los meses siguientes hasta que la des de baja. Podés actualizar el monto en cualquier momento desde el botón ✏️.
+            </div>
+          </div>
+        </div>
         <div class="form-group" id="g-cuotas-fields" style="display:none;grid-column:1/-1">
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
             <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas</div>
@@ -261,9 +273,30 @@
       <div id="h-empty" class="empty-state" style="display:none">Sin gastos en el período seleccionado</div>
     </div>
   </div>
-</div>
 
-<div id="page-ingresos" class="page">
+  <!-- Tab: Suscripciones -->
+  <div id="gastos-gastos-suscripciones" class="inner-section">
+    <div class="card" style="margin-bottom:16px;background:rgba(108,99,255,0.06);border-color:rgba(108,99,255,0.3)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:20px">🔁</span>
+        <span style="font-weight:600;color:var(--accent)">Suscripciones recurrentes</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted)">Los gastos marcados como recurrentes en la categoría Suscripciones aparecen automáticamente en cada mes. Podés editarlos o darlos de baja desde aquí.</div>
+    </div>
+    <div id="sus-kpis" class="grid-3" style="margin-bottom:20px"></div>
+    <div class="card">
+      <div class="section-header">
+        <span style="font-weight:600">Suscripciones activas e inactivas</span>
+        <span id="sus-total-badge" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Suscripción</th><th>Monto</th><th>Medio</th><th>Notas</th><th>Estado</th><th>Inicio</th><th>Fin</th><th></th></tr></thead>
+        <tbody id="sus-table-body"></tbody></table>
+      </div>
+      <div id="sus-empty" class="empty-state" style="display:none">No hay suscripciones cargadas. Agregá un gasto de categoría Suscripciones y marcalo como 🔁 recurrente.</div>
+    </div>
+  </div>
+</div>
   <div class="section-header">
     <div class="section-title">💵 Ingresos</div>
     <div class="month-selector"><select id="i-month" onchange="renderIngresos()"></select><select id="i-year" onchange="renderIngresos()"></select></div>
@@ -560,6 +593,22 @@
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eg-notas" placeholder="Opcional"></div>
       <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
     </div>
+    <div id="eg-recurrente-panel" style="display:none;margin:10px 0;padding:14px;background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px">
+      <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:10px">🔁 Pago recurrente</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="eg-recurrente" style="width:15px;height:15px;accent-color:var(--accent)">
+          <span>Marcar como recurrente (se replica automáticamente en todos los meses)</span>
+        </label>
+        <div style="font-size:12px;color:var(--muted)">
+          Al activarlo, esta suscripción aparecerá proyectada en los meses siguientes. Si cambiás el monto, se usa ese valor desde ahora en adelante.
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:160px"><label>Dar de baja desde (opcional)</label><input type="month" id="eg-fecha-fin-rec" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;width:100%"></div>
+          <div style="font-size:12px;color:var(--muted);align-self:flex-end;padding-bottom:8px">Dejar vacío = sigue activa indefinidamente</div>
+        </div>
+      </div>
+    </div>
     <div id="eg-plan-note" style="display:none;margin:10px 0;padding:10px;background:rgba(108,99,255,0.1);border-radius:8px;font-size:12px;color:var(--accent)">
       💳 Este gasto forma parte de un plan de cuotas. Todos los cambios se aplicarán a <strong>todas las cuotas del plan</strong>. Si modificás el monto, se interpreta como el <strong>total nuevo del plan</strong> y se divide entre todas las cuotas.
     </div>
@@ -604,6 +653,35 @@
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('modal-edit-cat')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveCat()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-edit-suscripcion">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">✏️ Editar suscripción</span><button class="modal-close" onclick="closeModal('modal-edit-suscripcion')">×</button></div>
+    <input type="hidden" id="es-id">
+    <div style="margin-bottom:16px;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted)" id="es-info-banner"></div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group"><label>Descripción</label><input type="text" id="es-desc"></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="es-monto" placeholder="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="es-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="es-medio"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="es-notas" placeholder="Opcional"></div>
+      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="es-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
+    </div>
+    <div style="margin:12px 0;padding:12px;background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px">
+      <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:10px">🔁 Estado de recurrencia</div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:10px">
+        <input type="checkbox" id="es-activa" style="width:15px;height:15px;accent-color:var(--accent)">
+        <span>Suscripción activa</span>
+      </label>
+      <div class="form-group"><label>Dar de baja desde (mes/año) — dejar vacío si sigue activa</label><input type="month" id="es-fecha-fin" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;width:100%"></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Si cambiás el monto, se usará ese valor desde el mes siguiente. El historial pasado no se modifica.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-suscripcion')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-suscripcion" onclick="saveEditSuscripcion()">Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -888,7 +966,192 @@ function innerTab(section,tab,evt){
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
-// CUOTAS TC
+// RECURRENTES - mostrar/ocultar bloque según categoría
+function onCatChangeGasto() {
+  const cat = document.getElementById('g-cat')?.value || '';
+  const recField = document.getElementById('g-recurrente-field');
+  if (recField) recField.style.display = cat === 'Suscripciones' ? 'block' : 'none';
+  if (cat !== 'Suscripciones') {
+    const cb = document.getElementById('g-recurrente');
+    if (cb) { cb.checked = false; toggleRecurrenteOpts('g'); }
+  }
+}
+
+function toggleRecurrenteOpts(prefix) {
+  const cb = document.getElementById(prefix + '-recurrente');
+  const opts = document.getElementById(prefix + '-recurrente-opts');
+  if (opts) opts.style.display = cb?.checked ? 'block' : 'none';
+}
+
+// Obtener suscripciones (gastos recurrentes): el gasto base tiene recurrente=true
+function getSuscripciones() {
+  return (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones');
+}
+
+// ¿Una suscripción está activa en un mes/año dado?
+function suscripcionActivaEnMes(g, month, year) {
+  if (!g.recurrente) return false;
+  // Fecha de inicio de la suscripción
+  const inicio = new Date(g.fecha + 'T12:00:00');
+  const mesGasto = new Date(year, month, 1);
+  if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
+  // Fecha fin de recurrencia
+  if (g.fecha_fin_recurrencia) {
+    const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
+    if (mesGasto >= fin) return false;
+  }
+  // Si recurrente_activa es false explícitamente
+  if (g.recurrente_activa === false) return false;
+  return true;
+}
+
+// Inyectar gastos virtuales de suscripciones en la lista de un mes
+function getGastosConSuscripciones(month, year) {
+  const ymStr = `${year}-${String(month+1).padStart(2,'0')}`;
+  // Gastos reales del mes
+  const reales = filterByMonth(db.gastos, month, year);
+  // IDs de suscripciones que ya tienen entrada real en este mes
+  const suscripcionesConEntradaReal = new Set(
+    reales.filter(g => g.recurrente).map(g => g.id)
+  );
+  // Suscripciones activas sin entrada real en este mes
+  const virtuales = getSuscripciones()
+    .filter(g => !suscripcionesConEntradaReal.has(g.id) && suscripcionActivaEnMes(g, month, year))
+    .map(g => ({ ...g, _virtual: true, fecha: `${ymStr}-01` }));
+  return [...reales, ...virtuales];
+}
+
+function renderSuscripciones() {
+  const subs = getSuscripciones();
+  const activas = subs.filter(g => g.recurrente_activa !== false && !g.fecha_fin_recurrencia);
+  const totalMes = activas.reduce((s,g) => s + toARS(g.monto, g.moneda), 0);
+  const totalUSD = activas.filter(g=>g.moneda==='USD').reduce((s,g)=>s+g.monto,0);
+
+  document.getElementById('sus-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Suscripciones activas</div><div class="card-value" style="color:var(--accent)">${activas.length}</div><div class="card-sub">pagos mensuales</div></div>
+    <div class="card"><div class="card-title">Costo mensual ARS</div><div class="card-value amount-negative">${fmtARS(activas.filter(g=>g.moneda==='ARS').reduce((s,g)=>s+g.monto,0))}</div></div>
+    ${totalUSD>0?`<div class="card"><div class="card-title">Costo mensual USD</div><div class="card-value amount-negative">${fmtUSD(totalUSD)}</div></div>`:`<div class="card"><div class="card-title">Total en ARS (est.)</div><div class="card-value amount-negative">${fmtARS(totalMes)}</div><div class="card-sub">al tipo de cambio actual</div></div>`}`;
+
+  const tbody = document.getElementById('sus-table-body');
+  const empty = document.getElementById('sus-empty');
+
+  if (subs.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('sus-total-badge').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+  document.getElementById('sus-total-badge').textContent = `${subs.length} suscripción${subs.length!==1?'es':''}`;
+
+  const sorted = [...subs].sort((a,b) => {
+    const aAct = a.recurrente_activa !== false && !a.fecha_fin_recurrencia;
+    const bAct = b.recurrente_activa !== false && !b.fecha_fin_recurrencia;
+    if (aAct !== bAct) return aAct ? -1 : 1;
+    return a.descripcion?.localeCompare(b.descripcion || '') || 0;
+  });
+
+  tbody.innerHTML = sorted.map(g => {
+    const activa = g.recurrente_activa !== false && !g.fecha_fin_recurrencia;
+    const statusBadge = activa
+      ? `<span class="badge" style="background:rgba(0,212,170,0.15);color:var(--green)">✓ Activa</span>`
+      : `<span class="badge" style="background:rgba(255,77,109,0.1);color:var(--red)">✗ Dada de baja</span>`;
+    const finLabel = g.fecha_fin_recurrencia
+      ? `<span style="font-size:12px;color:var(--muted)">hasta ${g.fecha_fin_recurrencia.slice(0,7)}</span>` : '—';
+    const montoFmt = g.moneda==='USD' ? fmtUSD(g.monto) : fmtARS(g.monto);
+    return `<tr style="${!activa?'opacity:0.55':''}">
+      <td style="font-weight:500">${g.desc||g.descripcion||'—'}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</td>
+      <td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}/mes</td>
+      <td style="color:var(--muted)">${g.medio||'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${g.notas||'—'}</td>
+      <td>${statusBadge}</td>
+      <td style="font-size:12px;color:var(--muted)">${g.fecha?g.fecha.slice(0,7):'—'}</td>
+      <td>${finLabel}</td>
+      <td style="white-space:nowrap">
+        <button class="del-btn" style="margin-right:2px" onclick="abrirEditSuscripcion('${g.id}')">✏️</button>
+        ${activa?`<button class="del-btn" title="Dar de baja" onclick="darDeBajaSuscripcion('${g.id}')">⏹</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirEditSuscripcion(id) {
+  const g = db.gastos.find(x => x.id === id);
+  if (!g) return;
+  document.getElementById('es-id').value = id;
+  document.getElementById('es-desc').value = g.desc || g.descripcion || '';
+  document.getElementById('es-monto').value = g.monto;
+  document.getElementById('es-moneda').value = g.moneda || 'ARS';
+  document.getElementById('es-medio').value = g.medio || 'efectivo';
+  document.getElementById('es-notas').value = g.notas || '';
+  document.getElementById('es-compartido').checked = !!g.es_compartido;
+  document.getElementById('es-activa').checked = g.recurrente_activa !== false;
+  document.getElementById('es-fecha-fin').value = g.fecha_fin_recurrencia ? g.fecha_fin_recurrencia.slice(0,7) : '';
+  document.getElementById('es-info-banner').innerHTML = `<span style="color:var(--accent)">🔁</span> Suscripción desde <strong>${g.fecha?.slice(0,7)||'—'}</strong> · ${g.moneda}`;
+  openModal('modal-edit-suscripcion');
+}
+
+async function saveEditSuscripcion() {
+  const id = document.getElementById('es-id').value;
+  const desc = document.getElementById('es-desc').value.trim();
+  const monto = parseFloat(document.getElementById('es-monto').value);
+  const moneda = document.getElementById('es-moneda').value;
+  const medio = document.getElementById('es-medio').value;
+  const notas = document.getElementById('es-notas').value.trim();
+  const esCompartido = document.getElementById('es-compartido').checked;
+  const activa = document.getElementById('es-activa').checked;
+  const fechaFinRaw = document.getElementById('es-fecha-fin').value; // "YYYY-MM"
+  const fechaFin = fechaFinRaw ? fechaFinRaw + '-01' : null;
+
+  if (!desc || isNaN(monto) || monto <= 0) { showToast('Completá descripción y monto', 'error'); return; }
+  setBtnLoading('btn-save-suscripcion', true);
+
+  const updates = {
+    descripcion: desc,
+    monto,
+    moneda,
+    medio,
+    notas,
+    es_compartido: esCompartido,
+    recurrente_activa: activa,
+    fecha_fin_recurrencia: fechaFin
+  };
+
+  const { error } = await sb.from('gastos').update(updates).eq('id', id);
+  setBtnLoading('btn-save-suscripcion', false);
+  if (error) { showToast(error.message, 'error'); return; }
+
+  await refreshGastosCompleto();
+  closeModal('modal-edit-suscripcion');
+  renderSuscripciones();
+  renderGastos();
+  renderDashboard();
+  showToast('Suscripción actualizada ✓');
+}
+
+async function darDeBajaSuscripcion(id) {
+  const g = db.gastos.find(x => x.id === id);
+  const nombre = g?.desc || g?.descripcion || 'esta suscripción';
+  if (!confirm(`¿Dar de baja "${nombre}" desde el mes que viene?`)) return;
+  const hoy = new Date();
+  let m = hoy.getMonth() + 1, y = hoy.getFullYear();
+  if (m > 11) { m = 0; y++; }
+  const fechaFin = `${y}-${String(m+1).padStart(2,'0')}-01`;
+  const { error } = await sb.from('gastos').update({ recurrente_activa: false, fecha_fin_recurrencia: fechaFin }).eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  await refreshGastosCompleto();
+  renderSuscripciones();
+  renderGastos();
+  renderDashboard();
+  showToast(`"${nombre}" dada de baja ✓`);
+}
+
+async function refreshGastosCompleto() {
+  const uid = currentUser.id;
+  const { data } = await sb.from('gastos').select('*').or(`user_id.eq.${uid},es_compartido.eq.true`).order('fecha', { ascending: false });
+  db.gastos = (data || []).map(x => ({ ...x, desc: x.descripcion }));
+}
+
 function toggleCuotasFields(prefix) {
   const medio = document.getElementById(prefix+'-medio').value;
   const fields = document.getElementById(prefix+'-cuotas-fields');
@@ -949,6 +1212,7 @@ function generatePlanId() {
 async function addGasto(){
   const fecha=document.getElementById('g-fecha').value,desc=document.getElementById('g-desc').value.trim(),monto=parseFloat(document.getElementById('g-monto').value),moneda=document.getElementById('g-moneda').value,cat=document.getElementById('g-cat').value,tipo=document.getElementById('g-tipo').value,medio=document.getElementById('g-medio').value,notas=document.getElementById('g-notas').value.trim();
   if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
+  const esRecurrente = cat === 'Suscripciones' && !!document.getElementById('g-recurrente')?.checked;
   setBtnLoading('btn-add-gasto',true);
 
   if(medio==='credito'){
@@ -972,12 +1236,14 @@ async function addGasto(){
     showToast(`${n} cuota${n>1?'s':''} agregadas ✓`);
   } else {
     const esComp=document.getElementById('g-compartido').checked;
-    const{error}=await sb.from('gastos').insert({user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp});
+    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp};
+    if(esRecurrente){row.recurrente=true;row.recurrente_activa=true;}
+    const{error}=await sb.from('gastos').insert(row);
     setBtnLoading('btn-add-gasto',false);
     if(error){showToast(error.message,'error');return;}
-    showToast('Gasto agregado ✓');
+    showToast(esRecurrente?'Suscripción recurrente agregada ✓':'Gasto agregado ✓');
   }
-  await refreshTable('gastos');clearGastoForm();toggleCuotasFields('g');renderGastos();renderDashboard();
+  await refreshGastosCompleto();clearGastoForm();toggleCuotasFields('g');renderGastos();renderDashboard();
 }
 function clearGastoForm(){
   document.getElementById('g-desc').value='';
@@ -1025,7 +1291,8 @@ async function confirmDeletePlan(mode){
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const catFilter=document.getElementById('g-cat-filter')?.value||'';
-  let gastos=filterByMonth(db.gastos,month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  // Combinar gastos reales + suscripciones virtuales del mes
+  let gastos=getGastosConSuscripciones(month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   if(catFilter) gastos=gastos.filter(g=>g.cat===catFilter);
   document.getElementById('g-table-title').textContent=`Gastos — ${MONTHS[month]} ${year}`;
   const total=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
@@ -1035,7 +1302,19 @@ function renderGastos(){
   empty.style.display='none';
   const tc={regular:'#6c63ff',inusual:'#ffb347',ahorro:'#00d4aa'};
   const{month:gMonth,year:gYear}=getSelectedMonthYear('g-month','g-year');
-  tbody.innerHTML=gastos.map(g=>{const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);const esGrupal=(g.desc||g.descripcion||'').includes('(parte grupal');return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap">${g.user_id===currentUser.id?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`:'<span style="font-size:11px;color:var(--muted)">ajeno</span>'}</td></tr>`;}).join('');
+  tbody.innerHTML=gastos.map(g=>{
+    const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};
+    const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);
+    const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);
+    const esGrupal=(g.desc||g.descripcion||'').includes('(parte grupal');
+    const esVirtual=!!g._virtual;
+    const recBadge=g.recurrente?` <span style="font-size:11px;color:var(--accent)" title="Suscripción recurrente">🔁</span>`:'';
+    const virtualNote=esVirtual?`<div style="font-size:10px;color:var(--muted);font-style:italic">proyectado</div>`:'';
+    const acciones=esVirtual
+      ? `<button class="del-btn" style="margin-right:2px" onclick="abrirEditSuscripcion('${g.id}')">✏️</button>`
+      : (g.user_id===currentUser.id?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`:'<span style="font-size:11px;color:var(--muted)">ajeno</span>');
+    return`<tr style="${esVirtual?'opacity:0.7;background:rgba(108,99,255,0.04)':''}"><td style="color:var(--muted)">${g.fecha}${virtualNote}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+  }).join('');
 }
 
 // INGRESOS
@@ -1317,6 +1596,8 @@ function abrirEditGasto(id) {
     (db.tarjetas||[]).map(t => `<option value="${t.id}" ${t.id===g.tarjeta_id?'selected':''}>${t.nombre}</option>`).join('');
   // Show plan note if part of a plan
   document.getElementById('eg-plan-note').style.display = g.plan_id ? 'block' : 'none';
+  // Show recurrente panel if gasto is recurrente
+  refreshEgRecurrentePanel(g);
   toggleEditConvertir();
   openModal('modal-edit-gasto');
 }
@@ -1353,12 +1634,22 @@ async function saveEditGasto() {
       .eq('plan_id', planId).eq('user_id', currentUser.id);
     if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
   } else {
-    const { error } = await sb.from('gastos').update({ fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido }).eq('id', id);
+    const g = db.gastos.find(x => x.id === id);
+    const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido };
+    // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
+    if (cat === 'Suscripciones' || (g && g.recurrente)) {
+      const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
+      const fechaFinRaw = document.getElementById('eg-fecha-fin-rec')?.value;
+      updateObj.recurrente = recActiva; // activa el flag si se marcó
+      updateObj.recurrente_activa = recActiva;
+      updateObj.fecha_fin_recurrencia = fechaFinRaw ? fechaFinRaw + '-01' : null;
+    }
+    const { error } = await sb.from('gastos').update(updateObj).eq('id', id);
     if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
   }
 
   setBtnLoading('btn-save-gasto', false);
-  await refreshTable('gastos');
+  await refreshGastosCompleto();
   closeModal('modal-edit-gasto');
   renderGastos();
   renderDashboard();
@@ -1700,6 +1991,21 @@ function populateCatSelects(){
     if(current)el.value=current;
   });
   ['g-cat','c-cat','comp-cat','gg-cat'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');});
+  // Re-check recurrente visibility in case category list changed
+  onCatChangeGasto();
+}
+
+// Also hook the edit modal to show/hide the recurrente panel
+function refreshEgRecurrentePanel(g) {
+  const panel = document.getElementById('eg-recurrente-panel');
+  if (!panel) return;
+  // Mostrar el panel para cualquier gasto de categoría Suscripciones
+  const esSuscripcion = g && (g.cat === 'Suscripciones');
+  panel.style.display = esSuscripcion ? 'block' : 'none';
+  if (esSuscripcion) {
+    document.getElementById('eg-recurrente').checked = !!g.recurrente && g.recurrente_activa !== false;
+    document.getElementById('eg-fecha-fin-rec').value = g.fecha_fin_recurrencia ? g.fecha_fin_recurrencia.slice(0,7) : '';
+  }
 }
 
 // EXPORT / IMPORT
@@ -1743,7 +2049,7 @@ function renderDashboard(){
   const{month,year}=getSelectedMonthYear('dash-month','dash-year');
   document.getElementById('dash-subtitle').textContent=`${MONTHS[month]} ${year}`;
   document.getElementById('dolar-val').textContent=(db.config.dolar||'—').toLocaleString('es-AR');
-  const gastos=filterByMonth(db.gastos,month,year),ingresos=filterByMonth(db.ingresos,month,year);
+  const gastos=getGastosConSuscripciones(month,year),ingresos=filterByMonth(db.ingresos,month,year);
   // Cuotas activas desde nuevo esquema (plan_id en gastos)
   const hoyYM=new Date().toISOString().slice(0,7);
   const planes={};
