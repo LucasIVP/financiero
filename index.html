@@ -1012,6 +1012,10 @@ async function refreshTable(table){
   const{data}=await sb.from(table).select('*').eq('user_id',uid).order('created_at',{ascending:false});
   if(table==='gastos')db.gastos=(data||[]).map(x=>({...x,desc:x.descripcion}));
   else if(table==='cuotas')db.cuotas=(data||[]).map(x=>({...x,desc:x.descripcion}));
+  else if(table==='ingresos'){
+    const TIPO_MAP={trabajo:'fijo',freelance:'extra'};
+    db.ingresos=(data||[]).map(x=>({...x,tipo:TIPO_MAP[x.tipo]||x.tipo}));
+  }
   else db[table]=data||[];
 }
 
