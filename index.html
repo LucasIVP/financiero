@@ -1760,7 +1760,7 @@ async function saveEditGasto() {
     if (cat === 'Suscripciones' || (g && g.recurrente)) {
       const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
       const fechaFinRaw = document.getElementById('eg-fecha-fin-rec')?.value;
-      updateObj.recurrente = recActiva; // activa el flag si se marcó
+      updateObj.recurrente = recActiva;
       updateObj.recurrente_activa = recActiva;
       updateObj.fecha_fin_recurrencia = fechaFinRaw ? fechaFinRaw + '-01' : null;
     }
@@ -1768,19 +1768,23 @@ async function saveEditGasto() {
     if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
   }
 
+  const recActivado = cat === 'Suscripciones' && document.getElementById('eg-recurrente')?.checked;
   setBtnLoading('btn-save-gasto', false);
   await refreshGastosCompleto();
   closeModal('modal-edit-gasto');
   renderGastos();
   renderDashboard();
-  showToast('Gasto actualizado ✓');
+  if (recActivado) renderSuscripciones();
+  showToast(recActivado ? '🔁 Suscripción recurrente activada ✓' : 'Gasto actualizado ✓');
 }
 
 // CONVERTIR DESDE MODAL EDICIÓN
 function toggleEditConvertir() {
   const medio = document.getElementById('eg-medio').value;
   const planId = document.getElementById('eg-plan-id').value;
-  const esCreditoSinPlan = medio === 'credito' && !planId;
+  const cat = document.getElementById('eg-cat').value;
+  // No sugerir convertir a cuotas si es una suscripción recurrente
+  const esCreditoSinPlan = medio === 'credito' && !planId && cat !== 'Suscripciones';
   document.getElementById('eg-convertir-note').style.display = esCreditoSinPlan ? 'block' : 'none';
   document.getElementById('btn-eg-convertir').style.display = esCreditoSinPlan ? 'inline-flex' : 'none';
 }
