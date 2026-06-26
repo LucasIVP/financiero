@@ -611,6 +611,9 @@
         <div style="font-size:12px;color:var(--muted)">
           Al activarlo, esta suscripción aparecerá proyectada en los meses siguientes. Si cambiás el monto, se usa ese valor desde ahora en adelante.
         </div>
+        <div id="eg-recurrente-plan-note" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(255,179,71,0.1);border:1px solid rgba(255,179,71,0.3);border-radius:8px;font-size:12px;color:var(--warn)">
+          ⚠️ Este gasto está registrado como plan de cuotas. Al activar recurrente, <strong>se eliminará el plan</strong> y se creará una suscripción mensual por el monto de una cuota.
+        </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="form-group" style="flex:1;min-width:160px"><label>Dar de baja desde (opcional)</label><input type="month" id="eg-fecha-fin-rec" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;width:100%"></div>
           <div style="font-size:12px;color:var(--muted);align-self:flex-end;padding-bottom:8px">Dejar vacío = sigue activa indefinidamente</div>
@@ -1056,22 +1059,27 @@ function toggleRecurrenteOpts(prefix) {
 
 // Obtener suscripciones (gastos recurrentes): el gasto base tiene recurrente=true
 function getSuscripciones() {
-  return (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones');
+  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones');
+  // Si tiene plan_id, usar solo la primera cuota como representante
+  const vistos = new Set();
+  return todos.filter(g => {
+    const key = g.plan_id || g.id;
+    if (vistos.has(key)) return false;
+    vistos.add(key);
+    return true;
+  }).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
 // ¿Una suscripción está activa en un mes/año dado?
 function suscripcionActivaEnMes(g, month, year) {
   if (!g.recurrente) return false;
-  // Fecha de inicio de la suscripción
   const inicio = new Date(g.fecha + 'T12:00:00');
   const mesGasto = new Date(year, month, 1);
   if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
-  // Fecha fin de recurrencia
   if (g.fecha_fin_recurrencia) {
     const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
     if (mesGasto >= fin) return false;
   }
-  // Si recurrente_activa es false explícitamente
   if (g.recurrente_activa === false) return false;
   return true;
 }
@@ -1079,15 +1087,17 @@ function suscripcionActivaEnMes(g, month, year) {
 // Inyectar gastos virtuales de suscripciones en la lista de un mes
 function getGastosConSuscripciones(month, year) {
   const ymStr = `${year}-${String(month+1).padStart(2,'0')}`;
-  // Gastos reales del mes
   const reales = filterByMonth(db.gastos, month, year);
-  // IDs de suscripciones que ya tienen entrada real en este mes
-  const suscripcionesConEntradaReal = new Set(
-    reales.filter(g => g.recurrente).map(g => g.id)
-  );
+  // IDs y plan_ids de suscripciones que ya tienen entrada real en este mes
+  const planIdsReales = new Set(reales.filter(g => g.plan_id && g.recurrente).map(g => g.plan_id));
+  const idsReales = new Set(reales.filter(g => !g.plan_id && g.recurrente).map(g => g.id));
   // Suscripciones activas sin entrada real en este mes
   const virtuales = getSuscripciones()
-    .filter(g => !suscripcionesConEntradaReal.has(g.id) && suscripcionActivaEnMes(g, month, year))
+    .filter(g => {
+      if (!suscripcionActivaEnMes(g, month, year)) return false;
+      if (g.plan_id) return !planIdsReales.has(g.plan_id);
+      return !idsReales.has(g.id);
+    })
     .map(g => ({ ...g, _virtual: true, fecha: `${ymStr}-01` }));
   return [...reales, ...virtuales];
 }
@@ -1740,11 +1750,55 @@ async function saveEditGasto() {
   setBtnLoading('btn-save-gasto', true);
 
   if (planId) {
-    // Update all cuotas: cat, tipo, notas, tarjeta, compartido
-    const updateBase = { tarjeta_id: tarjetaId, es_compartido: esCompartido, cat, tipo, notas };
-    // If monto changed, treat input as new total and recalculate per-cuota amount
     const cuotasDelPlan = db.gastos.filter(g => g.plan_id === planId);
     const ncuotas = cuotasDelPlan.length || 1;
+    const recActiva = cat === 'Suscripciones' && (document.getElementById('eg-recurrente')?.checked ?? false);
+
+    if (recActiva) {
+      // CONVERTIR PLAN A SUSCRIPCIÓN RECURRENTE:
+      // Usar el monto de una cuota (no el total), eliminar el plan y crear gasto simple
+      const cuotaMonto = cuotasDelPlan[0]?.cuota_monto || cuotasDelPlan[0]?.monto || monto;
+      const fechaFinRaw = (document.getElementById('eg-fecha-fin-rec')?.value || '').trim();
+      const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null;
+      // Usar descripción sin el sufijo "— cuota 01/01"
+      const descLimpia = desc.split(' — cuota')[0].trim();
+      // Usar la fecha de la primera cuota como fecha de inicio
+      cuotasDelPlan.sort((a,b) => a.fecha.localeCompare(b.fecha));
+      const fechaInicio = cuotasDelPlan[0]?.fecha || fecha;
+
+      // 1. Eliminar todas las cuotas del plan
+      const { error: delErr } = await sb.from('gastos').delete().eq('plan_id', planId).eq('user_id', currentUser.id);
+      if (delErr) { showToast('Error: ' + delErr.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
+
+      // 2. Insertar gasto simple recurrente
+      const { error: insErr } = await sb.from('gastos').insert({
+        user_id: currentUser.id,
+        fecha: fechaInicio,
+        descripcion: descLimpia,
+        monto: cuotaMonto,
+        moneda,
+        cat,
+        tipo,
+        medio,
+        notas,
+        tarjeta_id: tarjetaId || null,
+        es_compartido: esCompartido,
+        recurrente: true,
+        recurrente_activa: true,
+        fecha_fin_recurrencia: fechaFin
+      });
+      if (insErr) { showToast('Error: ' + insErr.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
+
+      setBtnLoading('btn-save-gasto', false);
+      await refreshGastosCompleto();
+      closeModal('modal-edit-gasto');
+      renderGastos(); renderDashboard(); renderSuscripciones();
+      showToast('🔁 Suscripción recurrente activada ✓');
+      return;
+    }
+
+    // Flujo normal (sin activar recurrente): actualizar todas las cuotas del plan
+    const updateBase = { tarjeta_id: tarjetaId, es_compartido: esCompartido, cat, tipo, notas };
     const montoTotalOriginal = (cuotasDelPlan[0]?.cuota_monto || cuotasDelPlan[0]?.monto) * ncuotas;
     if (Math.round(monto) !== Math.round(montoTotalOriginal)) {
       const nuevaCuotaMonto = Math.round(monto / ncuotas * 100) / 100;
@@ -2125,12 +2179,14 @@ function populateCatSelects(){
 function refreshEgRecurrentePanel(g) {
   const panel = document.getElementById('eg-recurrente-panel');
   if (!panel) return;
-  // Mostrar el panel para cualquier gasto de categoría Suscripciones
   const esSuscripcion = g && (g.cat === 'Suscripciones');
   panel.style.display = esSuscripcion ? 'block' : 'none';
   if (esSuscripcion) {
     document.getElementById('eg-recurrente').checked = !!g.recurrente && g.recurrente_activa !== false;
     document.getElementById('eg-fecha-fin-rec').value = g.fecha_fin_recurrencia ? g.fecha_fin_recurrencia.slice(0,7) : '';
+    // Mostrar advertencia si tiene plan_id
+    const planNote = document.getElementById('eg-recurrente-plan-note');
+    if (planNote) planNote.style.display = g.plan_id ? 'block' : 'none';
   }
 }
 
