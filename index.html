@@ -686,6 +686,23 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-confirmar-eliminar">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <span class="modal-title">🗑️ Eliminar</span>
+      <button class="modal-close" onclick="closeModal('modal-confirmar-eliminar')">×</button>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px" id="del-confirm-nombre"></div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6" id="del-confirm-msg">Esta acción no se puede deshacer.</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-confirmar-eliminar')">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-eliminar">Eliminar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-baja-suscripcion">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
@@ -1296,6 +1313,15 @@ function clearGastoForm(){
   if(ncuotas)ncuotas.value='1';
 }
 let _deletePlanCtx={id:null,planId:null,total:0};
+// CONFIRMACIÓN DE ELIMINACIÓN GENÉRICA
+function confirmarEliminar(nombre, msg, onConfirm) {
+  document.getElementById('del-confirm-nombre').textContent = nombre;
+  document.getElementById('del-confirm-msg').textContent = msg || 'Esta acción no se puede deshacer.';
+  const btn = document.getElementById('btn-confirmar-eliminar');
+  btn.onclick = () => { closeModal('modal-confirmar-eliminar'); onConfirm(); };
+  openModal('modal-confirmar-eliminar');
+}
+
 async function deleteGasto(id){
   const gasto=db.gastos.find(g=>g.id===id);
   if(!gasto){showToast('Gasto no encontrado','error');return;}
@@ -1308,9 +1334,12 @@ async function deleteGasto(id){
     openModal('modal-delete-plan');
     return;
   }
-  const{error}=await sb.from('gastos').delete().eq('id',id);
-  if(error){showToast(error.message,'error');return;}
-  db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();showToast('Eliminado');
+  const nombre = gasto.desc || gasto.descripcion || 'este gasto';
+  confirmarEliminar(nombre, 'Se eliminará este registro. Esta acción no se puede deshacer.', async () => {
+    const{error}=await sb.from('gastos').delete().eq('id',id);
+    if(error){showToast(error.message,'error');return;}
+    db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();renderSuscripciones();showToast('Eliminado');
+  });
 }
 async function confirmDeletePlan(mode){
   closeModal('modal-delete-plan');
@@ -1365,7 +1394,15 @@ async function addIngreso(){
   if(error){showToast(error.message,'error');return;}
   await refreshTable('ingresos');document.getElementById('i-fuente').value='';document.getElementById('i-monto').value='';renderIngresos();renderDashboard();showToast('Ingreso agregado ✓');
 }
-async function deleteIngreso(id){const{error}=await sb.from('ingresos').delete().eq('id',id);if(error){showToast(error.message,'error');return;}db.ingresos=db.ingresos.filter(i=>i.id!==id);renderIngresos();showToast('Eliminado');}
+async function deleteIngreso(id){
+  const ing = db.ingresos.find(i=>i.id===id);
+  const nombre = ing?.fuente || 'este ingreso';
+  confirmarEliminar(nombre, 'Se eliminará este ingreso. Esta acción no se puede deshacer.', async () => {
+    const{error}=await sb.from('ingresos').delete().eq('id',id);
+    if(error){showToast(error.message,'error');return;}
+    db.ingresos=db.ingresos.filter(i=>i.id!==id);renderIngresos();showToast('Eliminado');
+  });
+}
 function renderIngresos(){
   const{month,year}=getSelectedMonthYear('i-month','i-year');
   const ingresos=filterByMonth(db.ingresos,month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
@@ -1404,13 +1441,16 @@ async function addTarjeta() {
 }
 
 async function deleteTarjeta(id) {
-  if (!confirm('¿Eliminar esta tarjeta?')) return;
-  const { error } = await sb.from('tarjetas').delete().eq('id', id);
-  if (error) { showToast(error.message, 'error'); return; }
-  db.tarjetas = db.tarjetas.filter(t => t.id !== id);
-  populateTarjetaSelects();
-  renderTarjetas();
-  showToast('Eliminada');
+  const t = db.tarjetas.find(x => x.id === id);
+  const nombre = t ? `${t.nombre} (${t.banco || t.red})` : 'esta tarjeta';
+  confirmarEliminar(nombre, 'Se eliminará la tarjeta. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('tarjetas').delete().eq('id', id);
+    if (error) { showToast(error.message, 'error'); return; }
+    db.tarjetas = db.tarjetas.filter(t => t.id !== id);
+    populateTarjetaSelects();
+    renderTarjetas();
+    showToast('Eliminada');
+  });
 }
 
 function populateTarjetaSelects() {
@@ -1601,14 +1641,17 @@ function renderCalendarioTC(month, year, gastosTC) {
 }
 
 async function deletePlanCuotas(planId) {
-  if (!confirm('¿Eliminar todas las cuotas de este plan?')) return;
-  const { error } = await sb.from('gastos').delete().eq('plan_id', planId).eq('user_id', currentUser.id);
-  if (error) { showToast(error.message, 'error'); return; }
-  db.gastos = db.gastos.filter(g => g.plan_id !== planId);
-  renderTarjetas();
-  renderGastos();
-  renderDashboard();
-  showToast('Plan eliminado ✓');
+  const primera = db.gastos.find(g => g.plan_id === planId);
+  const nombre = primera ? (primera.desc||primera.descripcion||'').split(' —')[0] : 'este plan';
+  confirmarEliminar(nombre, 'Se eliminarán todas las cuotas del plan. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('gastos').delete().eq('plan_id', planId).eq('user_id', currentUser.id);
+    if (error) { showToast(error.message, 'error'); return; }
+    db.gastos = db.gastos.filter(g => g.plan_id !== planId);
+    renderTarjetas();
+    renderGastos();
+    renderDashboard();
+    showToast('Plan eliminado ✓');
+  });
 }
 
 // EDITAR GASTO
@@ -2298,12 +2341,15 @@ function clearVaquitaForm() {
 }
 
 async function deleteVaquita(id) {
-  if (!confirm('¿Eliminar este movimiento?')) return;
-  const { error } = await sb.from('vaquita').delete().eq('id', id);
-  if (error) { showToast('Error al eliminar', 'error'); return; }
-  showToast('Eliminado');
-  await loadCompartido();
-  renderCompartido();
+  const v = dbCompartido.vaquita.find(x => x.id === id);
+  const nombre = v?.descripcion || 'este movimiento';
+  confirmarEliminar(nombre, 'Se eliminará este movimiento de la vaquita. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('vaquita').delete().eq('id', id);
+    if (error) { showToast('Error al eliminar', 'error'); return; }
+    showToast('Eliminado');
+    await loadCompartido();
+    renderCompartido();
+  });
 }
 
 function renderVaquita() {
@@ -2605,13 +2651,16 @@ async function pagarGrupal(participanteId) {
 }
 
 async function deleteGastoGrupal(id) {
-  if (!confirm('¿Eliminar este gasto grupal?')) return;
-  const { error } = await sb.from('gastos_grupales').delete().eq('id', id);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
-  dbCompartido.grupales = dbCompartido.grupales.filter(g => g.id !== id);
-  dbCompartido.grupalesParticipantes = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id !== id);
-  renderGrupales();
-  showToast('Eliminado');
+  const g = dbCompartido.grupales.find(x => x.id === id);
+  const nombre = g?.descripcion || 'este gasto grupal';
+  confirmarEliminar(nombre, 'Se eliminará el gasto grupal y sus participantes. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('gastos_grupales').delete().eq('id', id);
+    if (error) { showToast('Error: ' + error.message, 'error'); return; }
+    dbCompartido.grupales = dbCompartido.grupales.filter(g => g.id !== id);
+    dbCompartido.grupalesParticipantes = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id !== id);
+    renderGrupales();
+    showToast('Eliminado');
+  });
 }
 
 function renderGrupales() {
@@ -2776,13 +2825,16 @@ async function cobrarCuota(cuotaId) {
 }
 
 async function deletePrestamo(prestamoId) {
-  if (!confirm('¿Eliminar este préstamo y todas sus cuotas?')) return;
-  const { error } = await sb.from('prestamos_tc').delete().eq('id', prestamoId);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
-  db.prestamos = db.prestamos.filter(p => p.id !== prestamoId);
-  db.prestamosCuotas = db.prestamosCuotas.filter(c => c.prestamo_id !== prestamoId);
-  renderPrestamos();
-  showToast('Préstamo eliminado');
+  const p = db.prestamos.find(x => x.id === prestamoId);
+  const nombre = p?.descripcion || 'este préstamo';
+  confirmarEliminar(nombre, 'Se eliminará el préstamo y todas sus cuotas. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('prestamos_tc').delete().eq('id', prestamoId);
+    if (error) { showToast('Error: ' + error.message, 'error'); return; }
+    db.prestamos = db.prestamos.filter(p => p.id !== prestamoId);
+    db.prestamosCuotas = db.prestamosCuotas.filter(c => c.prestamo_id !== prestamoId);
+    renderPrestamos();
+    showToast('Préstamo eliminado');
+  });
 }
 
 function renderPrestamos() {
