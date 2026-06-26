@@ -1172,8 +1172,8 @@ async function saveEditSuscripcion() {
   const notas = document.getElementById('es-notas').value.trim();
   const esCompartido = document.getElementById('es-compartido').checked;
   const activa = document.getElementById('es-activa').checked;
-  const fechaFinRaw = document.getElementById('es-fecha-fin').value; // "YYYY-MM"
-  const fechaFin = fechaFinRaw ? fechaFinRaw + '-01' : null;
+  const fechaFinRaw = (document.getElementById('es-fecha-fin').value || '').trim();
+  const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null;
 
   if (!desc || isNaN(monto) || monto <= 0) { showToast('Completá descripción y monto', 'error'); return; }
   setBtnLoading('btn-save-suscripcion', true);
@@ -1759,10 +1759,12 @@ async function saveEditGasto() {
     // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
     if (cat === 'Suscripciones' || (g && g.recurrente)) {
       const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
-      const fechaFinRaw = document.getElementById('eg-fecha-fin-rec')?.value;
+      const fechaFinRaw = (document.getElementById('eg-fecha-fin-rec')?.value || '').trim();
+      const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null; // "YYYY-MM" → "YYYY-MM-01" o null
       updateObj.recurrente = recActiva;
       updateObj.recurrente_activa = recActiva;
-      updateObj.fecha_fin_recurrencia = fechaFinRaw ? fechaFinRaw + '-01' : null;
+      updateObj.fecha_fin_recurrencia = fechaFin;
+      console.log('[recurrente] update obj:', JSON.stringify({recurrente: recActiva, recurrente_activa: recActiva, fecha_fin_recurrencia: fechaFin}));
     }
     const { error } = await sb.from('gastos').update(updateObj).eq('id', id);
     if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
