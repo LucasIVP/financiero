@@ -686,6 +686,29 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-baja-suscripcion">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">🔕 Dar de baja suscripción</span>
+      <button class="modal-close" onclick="closeModal('modal-baja-suscripcion')">×</button>
+    </div>
+    <input type="hidden" id="baja-id">
+    <div style="margin-bottom:18px">
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px" id="baja-nombre"></div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6">A partir del mes que indiques, esta suscripción dejará de aparecer. Los meses ya registrados no se modifican.</div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Dar de baja desde</label>
+      <input type="month" id="baja-fecha" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;width:100%">
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Por defecto: el mes que viene</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-baja-suscripcion')">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-baja" onclick="confirmarBajaSuscripcion()">Dar de baja</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-delete-plan">
   <div class="modal" style="max-width:400px">
     <div class="modal-header"><span class="modal-title">🗑️ Eliminar gasto en cuotas</span><button class="modal-close" onclick="closeModal('modal-delete-plan')">×</button></div>
@@ -1069,6 +1092,7 @@ function renderSuscripciones() {
       <td>${finLabel}</td>
       <td style="white-space:nowrap">
         <button class="del-btn" style="margin-right:2px" onclick="abrirEditSuscripcion('${g.id}')">✏️</button>
+        <button class="del-btn" style="margin-right:2px" onclick="deleteGasto('${g.id}')">🗑</button>
         ${activa?`<button class="del-btn" title="Dar de baja suscripción" onclick="darDeBajaSuscripcion('${g.id}')" style="color:#ff4d6d;font-size:13px;font-weight:700">✕</button>`:''}
       </td>
     </tr>`;
@@ -1129,17 +1153,32 @@ async function saveEditSuscripcion() {
   showToast('Suscripción actualizada ✓');
 }
 
-async function darDeBajaSuscripcion(id) {
+function darDeBajaSuscripcion(id) {
   const g = db.gastos.find(x => x.id === id);
-  const nombre = g?.desc || g?.descripcion || 'esta suscripción';
-  if (!confirm(`¿Dar de baja "${nombre}" desde el mes que viene?`)) return;
+  if (!g) return;
+  document.getElementById('baja-id').value = id;
+  document.getElementById('baja-nombre').textContent = g.desc || g.descripcion || 'Suscripción';
+  // Default: mes que viene
   const hoy = new Date();
   let m = hoy.getMonth() + 1, y = hoy.getFullYear();
   if (m > 11) { m = 0; y++; }
-  const fechaFin = `${y}-${String(m+1).padStart(2,'0')}-01`;
+  document.getElementById('baja-fecha').value = `${y}-${String(m+1).padStart(2,'0')}`;
+  openModal('modal-baja-suscripcion');
+}
+
+async function confirmarBajaSuscripcion() {
+  const id = document.getElementById('baja-id').value;
+  const fechaRaw = document.getElementById('baja-fecha').value; // "YYYY-MM"
+  if (!fechaRaw) { showToast('Seleccioná un mes de baja', 'error'); return; }
+  const fechaFin = fechaRaw + '-01';
+  setBtnLoading('btn-confirmar-baja', true);
   const { error } = await sb.from('gastos').update({ recurrente_activa: false, fecha_fin_recurrencia: fechaFin }).eq('id', id);
+  setBtnLoading('btn-confirmar-baja', false);
   if (error) { showToast(error.message, 'error'); return; }
+  const g = db.gastos.find(x => x.id === id);
+  const nombre = g?.desc || g?.descripcion || 'Suscripción';
   await refreshGastosCompleto();
+  closeModal('modal-baja-suscripcion');
   renderSuscripciones();
   renderGastos();
   renderDashboard();
