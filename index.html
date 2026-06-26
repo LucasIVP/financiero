@@ -310,7 +310,14 @@
       <div class="form-group"><label>Fuente</label><input type="text" id="i-fuente" placeholder="Ej: Trabajo, Freelance"></div>
       <div class="form-group"><label>Monto</label><input type="number" id="i-monto" placeholder="0" min="0"></div>
       <div class="form-group"><label>Moneda</label><select id="i-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-      <div class="form-group"><label>Tipo</label><select id="i-tipo"><option value="trabajo">Trabajo</option><option value="freelance">Freelance</option><option value="inversiones">Inversiones</option><option value="renta">Renta</option><option value="otro">Otro</option></select></div>
+      <div class="form-group"><label>Tipo</label><select id="i-tipo">
+        <option value="fijo">💼 Fijo (sueldo)</option>
+        <option value="extraordinario">⭐ Extraordinario (aguinaldo, bono)</option>
+        <option value="extra">➕ Extra (eventual, freelance)</option>
+        <option value="inversiones">📈 Inversiones</option>
+        <option value="renta">🏠 Renta</option>
+        <option value="otro">📄 Otro</option>
+      </select></div>
       <div class="form-group"><label>Notas</label><input type="text" id="i-notas" placeholder="Opcional"></div>
     </div>
     <div style="margin-top:14px"><button class="btn btn-success" id="btn-add-ingreso" onclick="addIngreso()">+ Agregar ingreso</button></div>
@@ -548,7 +555,6 @@
     <div class="card">
       <div style="font-weight:600;margin-bottom:14px">Objetivos mensuales</div>
       <div class="form-grid" style="grid-template-columns:1fr 1fr">
-        <div class="form-group"><label>Ingreso objetivo (ARS)</label><input type="number" id="cfg-obj-ingreso" placeholder="0" oninput="debounceCfg()"></div>
         <div class="form-group"><label>Ahorro objetivo %</label><input type="number" id="cfg-obj-ahorro" placeholder="20" oninput="debounceCfg()"></div>
         <div class="form-group"><label>% Gastos regulares</label><input type="number" id="cfg-obj-regular" placeholder="50" oninput="debounceCfg()"></div>
         <div class="form-group"><label>% Gastos inusuales</label><input type="number" id="cfg-obj-inusual" placeholder="30" oninput="debounceCfg()"></div>
@@ -634,7 +640,14 @@
       <div class="form-group"><label>Fuente</label><input type="text" id="ei-fuente" placeholder="Ej: Trabajo"></div>
       <div class="form-group"><label>Monto</label><input type="number" id="ei-monto" placeholder="0"></div>
       <div class="form-group"><label>Moneda</label><select id="ei-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-      <div class="form-group"><label>Tipo</label><select id="ei-tipo"><option value="trabajo">Trabajo</option><option value="freelance">Freelance</option><option value="inversiones">Inversiones</option><option value="renta">Renta</option><option value="otro">Otro</option></select></div>
+      <div class="form-group"><label>Tipo</label><select id="ei-tipo">
+        <option value="fijo">💼 Fijo (sueldo)</option>
+        <option value="extraordinario">⭐ Extraordinario (aguinaldo, bono)</option>
+        <option value="extra">➕ Extra (eventual, freelance)</option>
+        <option value="inversiones">📈 Inversiones</option>
+        <option value="renta">🏠 Renta</option>
+        <option value="otro">📄 Otro</option>
+      </select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="ei-notas" placeholder="Opcional"></div>
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
@@ -934,7 +947,19 @@ async function loadAllData(){
       sb.from('prestamos_cuotas').select('*').eq('user_id',uid).order('fecha'),
     ]);
     db.gastos=(g.data||[]).map(x=>({...x,desc:x.descripcion}));
-    db.ingresos=i.data||[];
+    // Migrar tipos viejos al cargar
+    const TIPO_MAP = { trabajo: 'fijo', freelance: 'extra' };
+    db.ingresos = (i.data||[]).map(x => ({
+      ...x,
+      tipo: TIPO_MAP[x.tipo] || x.tipo
+    }));
+    // Persistir migración en Supabase (solo los que necesitan cambio)
+    const aMigrar = (i.data||[]).filter(x => TIPO_MAP[x.tipo]);
+    if (aMigrar.length > 0) {
+      for (const ing of aMigrar) {
+        sb.from('ingresos').update({ tipo: TIPO_MAP[ing.tipo] }).eq('id', ing.id).then(() => {});
+      }
+    }
     db.cuotas=(c.data||[]).map(x=>({...x,desc:x.descripcion}));
     db.inversiones=inv.data||[];
     db.activos=act.data||[];
@@ -1413,7 +1438,15 @@ function renderIngresos(){
   const tbody=document.getElementById('i-table-body'),empty=document.getElementById('i-empty');
   if(ingresos.length===0){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
-  tbody.innerHTML=ingresos.map(i=>`<tr><td style="color:var(--muted)">${i.fecha}</td><td style="font-weight:500">${i.fuente}${i.notas?`<div style="font-size:11px;color:var(--muted)">${i.notas}</div>`:''}</td><td><span class="badge" style="background:rgba(0,212,170,0.1);color:var(--green)">${i.tipo}</span></td><td style="color:var(--muted)">${i.moneda}</td><td class="amount-positive" style="font-weight:600">${i.moneda==='USD'?fmtUSD(i.monto):fmtARS(i.monto)}</td><td style="white-space:nowrap"><button class="del-btn" style="margin-right:2px" onclick="abrirEditIngreso('${i.id}')">✏️</button><button class="del-btn" onclick="deleteIngreso('${i.id}')">🗑</button></td></tr>`).join('');
+  const TIPO_LABEL={'fijo':'💼 Fijo','extraordinario':'⭐ Extraordinario','extra':'➕ Extra','inversiones':'📈 Inversiones','renta':'🏠 Renta','otro':'📄 Otro'};
+  const TIPO_COLOR={'fijo':'rgba(0,212,170,0.15)','extraordinario':'rgba(255,179,71,0.15)','extra':'rgba(108,99,255,0.15)','inversiones':'rgba(0,212,170,0.1)','renta':'rgba(0,212,170,0.1)','otro':'rgba(100,100,100,0.15)'};
+  const TIPO_TEXT={'fijo':'var(--green)','extraordinario':'var(--warn)','extra':'var(--accent)','inversiones':'var(--green)','renta':'var(--green)','otro':'var(--muted)'};
+  tbody.innerHTML=ingresos.map(i=>{
+    const label=TIPO_LABEL[i.tipo]||i.tipo;
+    const bg=TIPO_COLOR[i.tipo]||'rgba(0,212,170,0.1)';
+    const tc=TIPO_TEXT[i.tipo]||'var(--green)';
+    return`<tr><td style="color:var(--muted)">${i.fecha}</td><td style="font-weight:500">${i.fuente}${i.notas?`<div style="font-size:11px;color:var(--muted)">${i.notas}</div>`:''}</td><td><span class="badge" style="background:${bg};color:${tc}">${label}</span></td><td style="color:var(--muted)">${i.moneda}</td><td class="amount-positive" style="font-weight:600">${i.moneda==='USD'?fmtUSD(i.monto):fmtARS(i.monto)}</td><td style="white-space:nowrap"><button class="del-btn" style="margin-right:2px" onclick="abrirEditIngreso('${i.id}')">✏️</button><button class="del-btn" onclick="deleteIngreso('${i.id}')">🗑</button></td></tr>`;
+  }).join('');
 }
 
 // TARJETAS
@@ -2021,14 +2054,14 @@ function renderPatrimonio(){
 let cfgDebounce;
 function debounceCfg(){clearTimeout(cfgDebounce);cfgDebounce=setTimeout(saveCfg,1500);}
 async function saveCfg(){
-  const cfg={dolar:parseFloat(document.getElementById('cfg-dolar').value)||0,dolar_fecha:document.getElementById('cfg-dolar-fecha').value,obj_ingreso:parseFloat(document.getElementById('cfg-obj-ingreso').value)||0,obj_ahorro:parseFloat(document.getElementById('cfg-obj-ahorro').value)||0,obj_regular:parseFloat(document.getElementById('cfg-obj-regular').value)||0,obj_inusual:parseFloat(document.getElementById('cfg-obj-inusual').value)||0,updated_at:new Date().toISOString()};
+  const cfg={dolar:parseFloat(document.getElementById('cfg-dolar').value)||0,dolar_fecha:document.getElementById('cfg-dolar-fecha').value,obj_ahorro:parseFloat(document.getElementById('cfg-obj-ahorro').value)||0,obj_regular:parseFloat(document.getElementById('cfg-obj-regular').value)||0,obj_inusual:parseFloat(document.getElementById('cfg-obj-inusual').value)||0,updated_at:new Date().toISOString()};
   const{error}=await sb.from('config').upsert({user_id:currentUser.id,...cfg},{onConflict:'user_id'});
   if(!error){Object.assign(db.config,cfg);document.getElementById('dolar-val').textContent=(cfg.dolar||'—').toLocaleString('es-AR');document.getElementById('cfg-saved-msg').textContent='✓ Guardado';setTimeout(()=>document.getElementById('cfg-saved-msg').textContent='',2000);}
 }
 function renderConfig(){
   const cfg=db.config;
   document.getElementById('cfg-dolar').value=cfg.dolar||'';document.getElementById('cfg-dolar-fecha').value=cfg.dolar_fecha||'';
-  document.getElementById('cfg-obj-ingreso').value=cfg.obj_ingreso||'';document.getElementById('cfg-obj-ahorro').value=cfg.obj_ahorro||'';
+  document.getElementById('cfg-obj-ahorro').value=cfg.obj_ahorro||'';
   document.getElementById('cfg-obj-regular').value=cfg.obj_regular||'';document.getElementById('cfg-obj-inusual').value=cfg.obj_inusual||'';
   document.getElementById('cat-list').innerHTML=db.categorias.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px">${c.emoji}</span><span style="flex:1;font-size:14px">${c.name}</span><button class="del-btn" title="Editar" onclick="abrirEditCat('${c.id}')">✏️</button><button class="del-btn" onclick="deleteCat('${c.id}')">🗑</button></div>`).join('');
 }
@@ -2128,45 +2161,70 @@ function gastoEfectivo(g, month, year) {
   return toARS(g.monto, g.moneda) * propYo;
 }
 
+function getUltimoIngresoFijo() {
+  // Busca el mes más reciente con ingresos tipo 'fijo', devuelve {total, mesLabel}
+  const fijos = db.ingresos.filter(i => i.tipo === 'fijo');
+  if (fijos.length === 0) return null;
+  // Agrupar por mes y encontrar el más reciente
+  const porMes = {};
+  fijos.forEach(i => {
+    const ym = i.fecha.slice(0,7);
+    porMes[ym] = (porMes[ym] || 0) + toARS(i.monto, i.moneda);
+  });
+  const meses = Object.keys(porMes).sort().reverse();
+  const ultimoYM = meses[0];
+  const [y, m] = ultimoYM.split('-');
+  return {
+    total: porMes[ultimoYM],
+    mesLabel: `${MONTHS[parseInt(m)-1]} ${y}`
+  };
+}
+
 function renderObjetivosDashboard(tI, tG, bal) {
   const el = document.getElementById('dash-objetivos');
   if (!el) return;
   const cfg = db.config;
-  const objIngreso = cfg.obj_ingreso || 0;
   const pctAhorro = cfg.obj_ahorro || 20;
-  if (!objIngreso) { el.innerHTML = ''; return; } // sin objetivo configurado, no mostrar
 
-  // Calcular valores objetivo
-  const ingresoRef = tI > 0 ? tI : objIngreso; // usar ingreso real si existe, sino el objetivo
+  // Determinar ingreso de referencia
+  let ingresoRef, refLabel, sinIngresos = false;
+  if (tI > 0) {
+    // Hay ingresos reales este mes: separar fijos de extraordinarios/extra
+    ingresoRef = tI;
+    refLabel = null; // basado en reales
+  } else {
+    // Sin ingresos declarados: usar último ingreso fijo conocido
+    const ultimo = getUltimoIngresoFijo();
+    if (!ultimo) { el.innerHTML = ''; return; } // sin ningún historial, no mostrar
+    ingresoRef = ultimo.total;
+    refLabel = `Referencia: sueldos de ${ultimo.mesLabel}`;
+    sinIngresos = true;
+  }
+
   const ahorroObjetivo = ingresoRef * (pctAhorro / 100);
   const gastoMaximo = ingresoRef - ahorroObjetivo;
-  const ahorroReal = tI > 0 ? bal : null; // solo calculable si hay ingresos reales
   const gastoPct = gastoMaximo > 0 ? Math.min(Math.round(tG / gastoMaximo * 100), 100) : 0;
-  const sinIngresos = tI === 0;
-
-  // Color de la barra de gasto según qué tan cerca está del techo
   const barColor = gastoPct >= 100 ? 'var(--red)' : gastoPct >= 85 ? 'var(--warn)' : 'var(--green)';
 
-  // Ingreso de referencia usado
   const ingresoLabel = sinIngresos
-    ? `<span style="color:var(--warn);font-size:12px">⚠️ Sin ingresos declarados — usando ingreso objetivo (${fmtARS(objIngreso)})</span>`
+    ? `<span style="color:var(--warn);font-size:12px">⚠️ ${refLabel} — cargá tus ingresos para ver datos reales</span>`
     : `<span style="color:var(--muted);font-size:12px">Basado en tus ingresos reales del mes</span>`;
 
-  // Ahorro real vs objetivo
   let ahorroStatus = '';
   if (!sinIngresos) {
-    const ahorroRealPct = tI > 0 ? Math.round(bal / tI * 100) : 0;
-    const cumple = bal >= ahorroObjetivo;
+    const ahorroReal = bal;
+    const ahorroRealPct = tI > 0 ? Math.round(ahorroReal / tI * 100) : 0;
+    const cumple = ahorroReal >= ahorroObjetivo;
     ahorroStatus = `<div style="display:flex;align-items:center;gap:8px;font-size:13px">
       <span style="${cumple ? 'color:var(--green)' : 'color:var(--red)'};font-weight:700;font-size:16px">${cumple ? '✓' : '✗'}</span>
-      <span>Ahorro real: <strong>${fmtARS(bal)}</strong> (${ahorroRealPct}%) — objetivo: ${fmtARS(ahorroObjetivo)} (${pctAhorro}%)</span>
+      <span>Ahorro real: <strong>${fmtARS(ahorroReal)}</strong> (${ahorroRealPct}%) — objetivo: <strong>${fmtARS(ahorroObjetivo)}</strong> (${pctAhorro}%)</span>
     </div>`;
   } else {
-    ahorroStatus = `<div style="font-size:13px;color:var(--muted)">Cargá tus ingresos para ver el ahorro real</div>`;
+    ahorroStatus = `<div style="font-size:13px;color:var(--muted)">Ahorro objetivo: <strong style="color:var(--accent)">${fmtARS(ahorroObjetivo)}</strong> (${pctAhorro}% de ${fmtARS(ingresoRef)})</div>`;
   }
 
   el.innerHTML = `<div class="card" style="border-color:rgba(108,99,255,0.3)">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:600;font-size:14px">🎯 Objetivos del mes</div>
       ${ingresoLabel}
     </div>
@@ -2188,7 +2246,7 @@ function renderObjetivosDashboard(tI, tG, bal) {
       <div>
         ${ahorroStatus}
         <div style="margin-top:8px;font-size:12px;color:var(--muted)">
-          Techo de gasto = Ingreso ${sinIngresos?'objetivo':'real'} − ${pctAhorro}% ahorro = <strong>${fmtARS(gastoMaximo)}</strong>
+          Techo = Ingreso ${sinIngresos?'ref.':'real'} ${fmtARS(ingresoRef)} − ${pctAhorro}% ahorro = <strong>${fmtARS(gastoMaximo)}</strong>
         </div>
       </div>
     </div>
