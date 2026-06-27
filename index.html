@@ -2416,21 +2416,21 @@ async function loadCompartido() {
 function calcProporcionMes(month, year) {
   const dolar = db.config.dolar || 1;
 
-  // Buscar ingresos del mes pedido
-  const ingresosParaMes = (m, y) => dbCompartido.ingresos.filter(i => {
+  // Ingresos del mes pedido, solo tipo 'fijo'
+  const fijosPorMes = (m, y) => dbCompartido.ingresos.filter(i => {
     const d = new Date(i.fecha + 'T12:00:00');
-    return d.getMonth() === m && d.getFullYear() === y;
+    return d.getMonth() === m && d.getFullYear() === y && i.tipo === 'fijo';
   });
 
-  let ingresosMes = ingresosParaMes(month, year);
+  let ingresosMes = fijosPorMes(month, year);
   let usandoFallback = false;
 
-  // Si no hay ingresos, buscar el último mes con ingresos declarados (hasta 12 meses atrás)
+  // Si no hay ingresos fijos este mes, buscar el último mes anterior con ingresos fijos (hasta 24 meses atrás)
   if (ingresosMes.length === 0) {
-    for (let k = 1; k <= 12; k++) {
+    for (let k = 1; k <= 24; k++) {
       let m = month - k, y = year;
       while (m < 0) { m += 12; y--; }
-      const anterior = ingresosParaMes(m, y);
+      const anterior = fijosPorMes(m, y);
       if (anterior.length > 0) { ingresosMes = anterior; usandoFallback = true; break; }
     }
   }
@@ -2463,7 +2463,7 @@ function renderCompartido() {
       <div><span style="color:var(--text);font-weight:600">Yo</span> <span style="margin-left:6px">${fmtARS(miIngreso)} (${pctYo}%)</span></div>
       <div><span style="color:var(--text);font-weight:600">Pareja</span> <span style="margin-left:6px">${fmtARS(otroIngreso)} (${pctOtro}%)</span></div>
       <div style="margin-left:auto;color:var(--accent2);font-weight:600">Total combinado: ${fmtARS(totalIng)}</div>
-      ${usandoFallback ? `<div style="width:100%;font-size:12px;color:var(--warn)">⚠️ Sin ingresos declarados este mes — usando el último porcentual conocido (${pctYo}% / ${pctOtro}%)</div>` : ''}
+      ${usandoFallback ? `<div style="width:100%;font-size:12px;color:var(--warn)">⚠️ Sin sueldo fijo declarado este mes — proporcional calculado sobre el último sueldo fijo conocido (${pctYo}% / ${pctOtro}%)</div>` : ''}
     </div>`;
   } else {
     elProp.textContent = 'No se encontraron ingresos declarados. Cargá ingresos en la pestaña Ingresos.';
