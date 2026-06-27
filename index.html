@@ -2414,31 +2414,39 @@ async function loadCompartido() {
 }
 
 function calcProporcionMes(month, year) {
-  const dolar = db.config.dolar || 1;
-
-  // Ingresos del mes pedido, solo tipo 'fijo'
-  const fijosPorMes = (m, y) => dbCompartido.ingresos.filter(i => {
-    const d = new Date(i.fecha + 'T12:00:00');
-    return d.getMonth() === m && d.getFullYear() === y && i.tipo === 'fijo';
-  });
-
-  let ingresosMes = fijosPorMes(month, year);
-  let usandoFallback = false;
-
-  // Si no hay ingresos fijos este mes, buscar el último mes anterior con ingresos fijos (hasta 24 meses atrás)
-  if (ingresosMes.length === 0) {
-    for (let k = 1; k <= 24; k++) {
+  // Obtiene el último ingreso fijo conocido para un usuario dado,
+  // buscando desde el mes actual hacia atrás (hasta 24 meses).
+  // Si el mes actual tiene fijo, lo usa directamente.
+  const ultimoFijoPara = (userId) => {
+    for (let k = 0; k <= 24; k++) {
       let m = month - k, y = year;
       while (m < 0) { m += 12; y--; }
-      const anterior = fijosPorMes(m, y);
-      if (anterior.length > 0) { ingresosMes = anterior; usandoFallback = true; break; }
+      const fijos = dbCompartido.ingresos.filter(i => {
+        const d = new Date(i.fecha + 'T12:00:00');
+        return i.user_id === userId &&
+               i.tipo === 'fijo' &&
+               d.getMonth() === m &&
+               d.getFullYear() === y;
+      });
+      if (fijos.length > 0) {
+        return { monto: fijos.reduce((s, i) => s + toARS(i.monto, i.moneda), 0), esFallback: k > 0 };
+      }
     }
-  }
+    return { monto: 0, esFallback: false };
+  };
 
-  const miIngreso = ingresosMes.filter(i => i.user_id === currentUser.id)
-    .reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
-  const otroIngreso = ingresosMes.filter(i => i.user_id !== currentUser.id)
-    .reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
+  // Buscar el user_id de la pareja (el otro usuario que aparece en ingresos compartidos)
+  const otherUserId = (() => {
+    const otros = dbCompartido.ingresos.filter(i => i.user_id !== currentUser.id);
+    return otros.length > 0 ? otros[0].user_id : null;
+  })();
+
+  const { monto: miIngreso, esFallback: misFallback } = ultimoFijoPara(currentUser.id);
+  const { monto: otroIngreso, esFallback: otroFallback } = otherUserId
+    ? ultimoFijoPara(otherUserId)
+    : { monto: 0, esFallback: false };
+
+  const usandoFallback = misFallback || otroFallback;
   const total = miIngreso + otroIngreso;
   return {
     miIngreso, otroIngreso, total,
