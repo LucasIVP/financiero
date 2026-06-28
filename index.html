@@ -618,6 +618,8 @@ CREATE TABLE compras_items (
   mes_referencia text,
   comprado boolean DEFAULT false,
   fecha_compra date,
+  promo text,
+  promo_extra numeric,
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE compras_items ENABLE ROW LEVEL SECURITY;
@@ -634,7 +636,11 @@ ALTER TABLE compras_temas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "own compras_temas" ON compras_temas FOR ALL USING (auth.uid()=user_id);
 
 -- Agregar columna subcat_id a gastos (si no existe)
-ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategorias(id);</pre>
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategorias(id);
+
+-- Agregar columnas de promoción a compras_items (si no existen)
+ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo text;
+ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;</pre>
       </details>
     </div>
   </div>
@@ -685,6 +691,19 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategor
         <div class="form-group"><label>Precio estimado (opcional)</label><input type="number" id="ci-precio" placeholder="0" min="0"></div>
         <div class="form-group"><label>Notas</label><input type="text" id="ci-notas" placeholder="Opcional"></div>
         <div class="form-group"><label>Mes de referencia</label><select id="ci-mes"></select></div>
+        <div class="form-group"><label>Promoción</label>
+          <select id="ci-promo" onchange="togglePromoExtra()" style="width:100%">
+            <option value="">Sin promoción</option>
+            <option value="2x1">2x1 (pagás 1, llevás 2)</option>
+            <option value="3x2">3x2 (pagás 2, llevás 3)</option>
+            <option value="desc2da">% descuento en 2ª unidad</option>
+            <option value="descTotal">% descuento en total</option>
+          </select>
+        </div>
+        <div class="form-group" id="ci-promo-extra-wrap" style="display:none">
+          <label id="ci-promo-extra-label">Porcentaje de descuento</label>
+          <input type="number" id="ci-promo-extra" placeholder="Ej: 20" min="0" max="100">
+        </div>
       </div>
       <div style="margin-top:12px;display:flex;gap:10px">
         <button class="btn btn-primary" id="btn-add-compra" onclick="addCompraItem()">+ Agregar</button>
@@ -695,6 +714,20 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategor
       <select id="ci-filter-mes" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"></select>
       <select id="ci-filter-tema" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todos los temas</option></select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" id="ci-filter-pendientes" onchange="renderCompras()" style="accent-color:var(--accent)"> Solo pendientes</label>
+    </div>
+    <!-- Calculadora de compra -->
+    <div id="compras-calc-bar" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <span style="font-size:13px;color:var(--muted)">🧮 Calculadora de compra</span>
+          <span style="font-size:20px;font-weight:700;color:var(--accent2)" id="calc-total-display">$0</span>
+          <span style="font-size:12px;color:var(--muted)" id="calc-items-display">0 ítems marcados</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="resetCalc()" style="font-size:12px;padding:6px 12px">🔄 Reiniciar</button>
+          <button class="btn btn-primary" onclick="finalizarCompra()" style="font-size:12px;padding:6px 14px;background:var(--accent2);border-color:var(--accent2)">✅ Finalizar compra → Gastos</button>
+        </div>
+      </div>
     </div>
     <div id="compras-kpis" class="grid-3" style="margin-bottom:16px"></div>
     <div id="compras-lista-container"></div>
@@ -990,6 +1023,71 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategor
     </div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('modal-edit-grupal')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-edit-compra">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><span class="modal-title">✏️ Editar ítem</span><button class="modal-close" onclick="closeModal('modal-edit-compra')">×</button></div>
+    <input type="hidden" id="eci-id">
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group" style="grid-column:1/-1"><label>Nombre</label><input type="text" id="eci-nombre" placeholder="Ej: Leche"></div>
+      <div class="form-group"><label>Tema / Tienda</label><select id="eci-tema"></select></div>
+      <div class="form-group"><label>Cantidad</label><input type="number" id="eci-cantidad" min="1" value="1"></div>
+      <div class="form-group"><label>Precio estimado</label><input type="number" id="eci-precio-est" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Precio real pagado</label><input type="number" id="eci-precio-real" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Promoción</label>
+        <select id="eci-promo" onchange="toggleEciPromoExtra()" style="width:100%">
+          <option value="">Sin promoción</option>
+          <option value="2x1">2x1</option>
+          <option value="3x2">3x2</option>
+          <option value="desc2da">% descuento en 2ª unidad</option>
+          <option value="descTotal">% descuento en total</option>
+        </select>
+      </div>
+      <div class="form-group" id="eci-promo-extra-wrap" style="display:none">
+        <label id="eci-promo-extra-label">Porcentaje</label>
+        <input type="number" id="eci-promo-extra" placeholder="Ej: 20" min="0" max="100">
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Mes de referencia</label><select id="eci-mes"></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eci-notas" placeholder="Opcional"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-compra')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-compra" onclick="saveEditCompra()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Finalizar Compra -->
+<div class="modal-overlay" id="modal-finalizar-compra">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><span class="modal-title">✅ Finalizar compra</span><button class="modal-close" onclick="closeModal('modal-finalizar-compra')">×</button></div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Se registrará un gasto en base a los ítems comprados. Revisá el detalle antes de confirmar.</div>
+      <div id="fc-detalle" style="background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;max-height:200px;overflow-y:auto"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,212,170,0.08);border:1px solid rgba(0,212,170,0.25);border-radius:10px;margin-bottom:14px">
+        <span style="font-size:13px;color:var(--muted)">Total a registrar</span>
+        <span id="fc-total" style="font-size:20px;font-weight:700;color:var(--accent2)">$0</span>
+      </div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr">
+        <div class="form-group"><label>Fecha del gasto</label><input type="date" id="fc-fecha"></div>
+        <div class="form-group"><label>Descripción</label><input type="text" id="fc-desc" placeholder="Ej: Supermercado semanal"></div>
+        <div class="form-group"><label>Categoría</label><select id="fc-cat"></select></div>
+        <div class="form-group"><label>Medio de pago</label>
+          <select id="fc-medio">
+            <option value="efectivo">Efectivo</option>
+            <option value="debito">Débito</option>
+            <option value="credito">Crédito</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-finalizar-compra')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-confirmar-compra" onclick="confirmarFinalizarCompra()" style="background:var(--accent2);border-color:var(--accent2)">✅ Registrar en Gastos</button>
     </div>
   </div>
 </div>
@@ -3503,6 +3601,9 @@ function initComprasMesSelect() {
   const selCarga = document.getElementById('ci-mes');
   const selFiltro = document.getElementById('ci-filter-mes');
   if (!selCarga || !selFiltro) return;
+  // Preserve current filter selection before rebuilding
+  const prevFiltro = selFiltro.value;
+  const prevCarga = selCarga.value;
   const { month, year } = currentYM();
   const opts = [];
   for (let k = -2; k <= 4; k++) {
@@ -3511,10 +3612,13 @@ function initComprasMesSelect() {
     while (m > 11) { m -= 12; y++; }
     const val = `${y}-${String(m + 1).padStart(2, '0')}`;
     const label = `${MONTHS[m]} ${y}`;
-    opts.push({ val, label, selected: k === 0 });
+    opts.push({ val, label });
   }
-  selCarga.innerHTML = opts.map(o => `<option value="${o.val}" ${o.selected ? 'selected' : ''}>${o.label}</option>`).join('');
-  selFiltro.innerHTML = '<option value="">Todos los meses</option>' + opts.map(o => `<option value="${o.val}" ${o.selected ? 'selected' : ''}>${o.label}</option>`).join('');
+  const currentVal = `${year}-${String(month + 1).padStart(2, '0')}`;
+  selCarga.innerHTML = opts.map(o => `<option value="${o.val}" ${o.val === (prevCarga || currentVal) ? 'selected' : ''}>${o.label}</option>`).join('');
+  selFiltro.innerHTML = '<option value="">Todos los meses</option>' + opts.map(o => `<option value="${o.val}" ${o.val === prevFiltro ? 'selected' : ''}>${o.label}</option>`).join('');
+  // Restore filter value explicitly
+  if (prevFiltro) selFiltro.value = prevFiltro;
 }
 
 function initComprasTemaSelect() {
@@ -3533,10 +3637,13 @@ async function addCompraItem() {
   const precio = parseFloat(document.getElementById('ci-precio')?.value) || null;
   const notas = document.getElementById('ci-notas')?.value.trim() || '';
   const mes = document.getElementById('ci-mes')?.value || new Date().toISOString().slice(0, 7);
+  const promo = document.getElementById('ci-promo')?.value || '';
+  const promoExtra = parseFloat(document.getElementById('ci-promo-extra')?.value) || null;
   if (!nombre) { showToast('Ingresá el nombre del ítem', 'error'); return; }
   setBtnLoading('btn-add-compra', true);
   const { data, error } = await sb.from('compras_items').insert({
-    user_id: currentUser.id, nombre, tema, cantidad, precio_estimado: precio, notas, mes_referencia: mes, comprado: false
+    user_id: currentUser.id, nombre, tema, cantidad, precio_estimado: precio, notas, mes_referencia: mes, comprado: false,
+    promo: promo || null, promo_extra: promoExtra || null
   }).select().single();
   setBtnLoading('btn-add-compra', false);
   if (error) { showToast(error.message, 'error'); return; }
@@ -3551,6 +3658,12 @@ function clearCompraForm() {
   document.getElementById('ci-precio').value = '';
   document.getElementById('ci-notas').value = '';
   document.getElementById('ci-cantidad').value = '1';
+  const promoEl = document.getElementById('ci-promo');
+  if (promoEl) { promoEl.value = ''; }
+  const promoExtEl = document.getElementById('ci-promo-extra');
+  if (promoExtEl) { promoExtEl.value = ''; }
+  const promoWrap = document.getElementById('ci-promo-extra-wrap');
+  if (promoWrap) promoWrap.style.display = 'none';
 }
 
 async function marcarComprado(id, comprado) {
@@ -3593,6 +3706,38 @@ async function updatePrecioCompra(id, precio) {
   showToast('Precio actualizado ✓');
 }
 
+function calcPrecioConPromo(precio, cantidad, promo, promoExtra) {
+  if (!precio) return null;
+  let total = precio * cantidad;
+  if (promo === '2x1') {
+    // Pagás por mitad (redondeado arriba)
+    const pagas = Math.ceil(cantidad / 2);
+    total = precio * pagas;
+  } else if (promo === '3x2') {
+    // Pagás 2 de cada 3
+    const grupos = Math.floor(cantidad / 3);
+    const resto = cantidad % 3;
+    total = precio * (grupos * 2 + resto);
+  } else if (promo === 'desc2da' && promoExtra) {
+    // Descuento en unidades pares
+    const pares = Math.floor(cantidad / 2);
+    const impares = cantidad - pares;
+    total = precio * impares + precio * pares * (1 - promoExtra / 100);
+  } else if (promo === 'descTotal' && promoExtra) {
+    total = precio * cantidad * (1 - promoExtra / 100);
+  }
+  return Math.round(total * 100) / 100;
+}
+
+function promoLabel(promo, promoExtra) {
+  if (!promo) return '';
+  if (promo === '2x1') return '🏷️ 2x1';
+  if (promo === '3x2') return '🏷️ 3x2';
+  if (promo === 'desc2da') return `🏷️ ${promoExtra || '?'}% en 2ª`;
+  if (promo === 'descTotal') return `🏷️ ${promoExtra || '?'}% dto`;
+  return '';
+}
+
 function renderCompras() {
   initComprasMesSelect();
   initComprasTemaSelect();
@@ -3607,8 +3752,25 @@ function renderCompras() {
 
   const pendientes = items.filter(x => !x.comprado).length;
   const comprados = items.filter(x => x.comprado).length;
-  const totalEstimado = items.filter(x => x.precio_estimado).reduce((s, x) => s + (x.precio_estimado * x.cantidad), 0);
+
+  // Precio efectivo considera promo
+  const totalEstimado = items.filter(x => x.precio_estimado).reduce((s, x) => {
+    const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
+    return s + (ef ?? x.precio_estimado * x.cantidad);
+  }, 0);
   const totalReal = items.filter(x => x.precio_real).reduce((s, x) => s + (x.precio_real * x.cantidad), 0);
+
+  // Calculadora: suma precios reales de comprados en la sesión actual
+  const calcItems = items.filter(x => x.comprado && x.precio_real);
+  const calcTotal = calcItems.reduce((s, x) => s + (x.precio_real * x.cantidad), 0);
+  const calcBar = document.getElementById('compras-calc-bar');
+  if (calcBar) {
+    calcBar.style.display = calcItems.length > 0 ? 'block' : 'none';
+    const el = document.getElementById('calc-total-display');
+    const elN = document.getElementById('calc-items-display');
+    if (el) el.textContent = fmtARS(calcTotal);
+    if (elN) elN.textContent = `${calcItems.length} ítem${calcItems.length !== 1 ? 's' : ''} marcado${calcItems.length !== 1 ? 's' : ''}`;
+  }
 
   document.getElementById('compras-kpis').innerHTML = `
     <div class="card"><div class="card-title">Pendientes</div><div class="card-value" style="color:var(--warn)">${pendientes}</div></div>
@@ -3627,25 +3789,32 @@ function renderCompras() {
   if (items.length === 0) { container.innerHTML = '<div class="empty-state">No hay ítems en la lista</div>'; return; }
 
   container.innerHTML = Object.entries(porTema).map(([tema, tItems]) => {
-    const rows = tItems.map(x => `
+    const rows = tItems.map(x => {
+      const precioEfectivo = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
+      const promoBadge = x.promo ? `<span style="font-size:10px;background:rgba(255,179,71,0.15);color:var(--warn);border-radius:4px;padding:1px 5px;margin-left:4px">${promoLabel(x.promo, x.promo_extra)}</span>` : '';
+      return `
       <tr>
         <td>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" ${x.comprado ? 'checked' : ''} onchange="marcarComprado('${x.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent2)">
-            <span style="${x.comprado ? 'text-decoration:line-through;color:var(--muted)' : 'font-weight:500'}">${x.nombre}</span>
+            <span style="${x.comprado ? 'text-decoration:line-through;color:var(--muted)' : 'font-weight:500'}">${x.nombre}</span>${promoBadge}
           </label>
           ${x.notas ? `<div style="font-size:11px;color:var(--muted);margin-left:24px">${x.notas}</div>` : ''}
         </td>
         <td style="color:var(--muted)">${x.cantidad > 1 ? `x${x.cantidad}` : '—'}</td>
-        <td style="color:var(--muted);font-size:12px">${x.precio_estimado ? fmtARS(x.precio_estimado * x.cantidad) : '—'}</td>
+        <td style="color:var(--muted);font-size:12px">${precioEfectivo ? fmtARS(precioEfectivo) : (x.precio_estimado ? fmtARS(x.precio_estimado * x.cantidad) : '—')}</td>
         <td>
           <input type="number" value="${x.precio_real || ''}" placeholder="—" min="0"
             onblur="updatePrecioCompra('${x.id}', this.value)"
             style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;outline:none">
         </td>
         <td style="color:var(--muted);font-size:12px">${x.fecha_compra || '—'}</td>
-        <td><button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button></td>
-      </tr>`).join('');
+        <td style="display:flex;gap:4px">
+          <button style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;opacity:.7" onclick="openEditCompra('${x.id}')" title="Editar">✏️</button>
+          <button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button>
+        </td>
+      </tr>`;
+    }).join('');
 
     return `<div class="card" style="margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:12px;font-size:15px">🏷️ ${tema}</div>
@@ -3655,6 +3824,165 @@ function renderCompras() {
       </table></div>
     </div>`;
   }).join('');
+}
+
+// ── Promo toggle helpers ──────────────────────────────────────────────────────
+function togglePromoExtra() {
+  const promo = document.getElementById('ci-promo')?.value || '';
+  const wrap = document.getElementById('ci-promo-extra-wrap');
+  const lbl = document.getElementById('ci-promo-extra-label');
+  if (!wrap) return;
+  const show = promo === 'desc2da' || promo === 'descTotal';
+  wrap.style.display = show ? '' : 'none';
+  if (lbl) lbl.textContent = promo === 'desc2da' ? '% descuento en 2ª unidad' : '% descuento total';
+}
+
+function toggleEciPromoExtra() {
+  const promo = document.getElementById('eci-promo')?.value || '';
+  const wrap = document.getElementById('eci-promo-extra-wrap');
+  const lbl = document.getElementById('eci-promo-extra-label');
+  if (!wrap) return;
+  const show = promo === 'desc2da' || promo === 'descTotal';
+  wrap.style.display = show ? '' : 'none';
+  if (lbl) lbl.textContent = promo === 'desc2da' ? '% en 2ª unidad' : '% dto total';
+}
+
+// ── Editar ítem de compra ─────────────────────────────────────────────────────
+function openEditCompra(id) {
+  const x = db.comprasItems.find(i => i.id === id);
+  if (!x) return;
+  document.getElementById('eci-id').value = x.id;
+  document.getElementById('eci-nombre').value = x.nombre || '';
+  document.getElementById('eci-cantidad').value = x.cantidad || 1;
+  document.getElementById('eci-precio-est').value = x.precio_estimado || '';
+  document.getElementById('eci-precio-real').value = x.precio_real || '';
+  document.getElementById('eci-notas').value = x.notas || '';
+  document.getElementById('eci-promo').value = x.promo || '';
+  document.getElementById('eci-promo-extra').value = x.promo_extra || '';
+  toggleEciPromoExtra();
+
+  // Populate tema select
+  const temas = ['General', ...db.comprasTemas.map(t => t.nombre)];
+  const eciTema = document.getElementById('eci-tema');
+  eciTema.innerHTML = temas.map(t => `<option value="${t}" ${t === x.tema ? 'selected' : ''}>${t}</option>`).join('');
+
+  // Populate mes select
+  const { month, year } = currentYM();
+  const opts = [];
+  for (let k = -2; k <= 4; k++) {
+    let m = month + k, y = year;
+    while (m < 0) { m += 12; y--; }
+    while (m > 11) { m -= 12; y++; }
+    const val = `${y}-${String(m + 1).padStart(2, '0')}`;
+    opts.push({ val, label: `${MONTHS[m]} ${y}` });
+  }
+  const eciMes = document.getElementById('eci-mes');
+  eciMes.innerHTML = opts.map(o => `<option value="${o.val}" ${o.val === x.mes_referencia ? 'selected' : ''}>${o.label}</option>`).join('');
+
+  openModal('modal-edit-compra');
+}
+
+async function saveEditCompra() {
+  const id = document.getElementById('eci-id').value;
+  const nombre = document.getElementById('eci-nombre').value.trim();
+  const tema = document.getElementById('eci-tema').value || 'General';
+  const cantidad = parseInt(document.getElementById('eci-cantidad').value) || 1;
+  const precioEst = parseFloat(document.getElementById('eci-precio-est').value) || null;
+  const precioReal = parseFloat(document.getElementById('eci-precio-real').value) || null;
+  const notas = document.getElementById('eci-notas').value.trim();
+  const mes = document.getElementById('eci-mes').value;
+  const promo = document.getElementById('eci-promo').value || null;
+  const promoExtra = parseFloat(document.getElementById('eci-promo-extra').value) || null;
+  if (!nombre) { showToast('El nombre no puede estar vacío', 'error'); return; }
+  setBtnLoading('btn-save-compra', true);
+  const update = { nombre, tema, cantidad, precio_estimado: precioEst, precio_real: precioReal, notas, mes_referencia: mes, promo, promo_extra: promoExtra };
+  if (precioReal) { update.fecha_compra = new Date().toISOString().slice(0, 10); update.comprado = true; }
+  const { error } = await sb.from('compras_items').update(update).eq('id', id);
+  setBtnLoading('btn-save-compra', false);
+  if (error) { showToast(error.message, 'error'); return; }
+  const item = db.comprasItems.find(x => x.id === id);
+  if (item) Object.assign(item, update);
+  closeModal('modal-edit-compra');
+  renderCompras();
+  showToast('Ítem actualizado ✓');
+}
+
+// ── Calculadora / Finalizar compra ────────────────────────────────────────────
+function resetCalc() {
+  // Desmarcar todos los ítems visibles como comprados
+  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
+  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
+  let items = db.comprasItems;
+  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
+  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
+  // Solo resetea el display, no cambia DB — el usuario decide qué marcar
+  renderCompras();
+  showToast('Calculadora reiniciada');
+}
+
+function finalizarCompra() {
+  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
+  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
+  let items = db.comprasItems;
+  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
+  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
+  const comprados = items.filter(x => x.comprado && x.precio_real);
+  if (comprados.length === 0) { showToast('No hay ítems comprados con precio real cargado', 'error'); return; }
+
+  const total = comprados.reduce((s, x) => s + (x.precio_real * x.cantidad), 0);
+
+  // Populate detalle
+  const detalle = document.getElementById('fc-detalle');
+  detalle.innerHTML = comprados.map(x => `
+    <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span>${x.nombre}${x.cantidad > 1 ? ` x${x.cantidad}` : ''}</span>
+      <span style="color:var(--accent2)">${fmtARS(x.precio_real * x.cantidad)}</span>
+    </div>`).join('') +
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:600">
+      <span>Total</span><span style="color:var(--accent2)">${fmtARS(total)}</span>
+    </div>`;
+
+  document.getElementById('fc-total').textContent = fmtARS(total);
+
+  // Fecha de hoy
+  document.getElementById('fc-fecha').value = new Date().toISOString().slice(0, 10);
+
+  // Descripción sugerida
+  const mesLbl = mesFilter ? MONTHS[parseInt(mesFilter.split('-')[1]) - 1] + ' ' + mesFilter.split('-')[0] : 'compra';
+  document.getElementById('fc-desc').value = `Compras ${mesLbl}`;
+
+  // Categorías
+  const catSel = document.getElementById('fc-cat');
+  catSel.innerHTML = db.categorias.map(c => `<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');
+  // Preseleccionar "Supermercado" o similar si existe
+  const superCat = db.categorias.find(c => /super|aliment|comida|mercado/i.test(c.name));
+  if (superCat) catSel.value = superCat.name;
+
+  openModal('modal-finalizar-compra');
+}
+
+async function confirmarFinalizarCompra() {
+  const fecha = document.getElementById('fc-fecha').value;
+  const desc = document.getElementById('fc-desc').value.trim();
+  const cat = document.getElementById('fc-cat').value;
+  const medio = document.getElementById('fc-medio').value;
+  const total = parseFloat(document.getElementById('fc-total').textContent.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
+  const montoNum = (() => {
+    const raw = document.getElementById('fc-total').textContent;
+    return parseFloat(raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
+  })();
+  if (!fecha || !desc || isNaN(montoNum) || montoNum <= 0) { showToast('Completá todos los campos', 'error'); return; }
+  setBtnLoading('btn-confirmar-compra', true);
+  const { error } = await sb.from('gastos').insert({
+    user_id: currentUser.id, fecha, descripcion: desc, monto: montoNum, moneda: 'ARS',
+    cat, tipo: 'regular', medio, notas: 'Registrado desde Lista de Compras'
+  });
+  setBtnLoading('btn-confirmar-compra', false);
+  if (error) { showToast(error.message, 'error'); return; }
+  await refreshGastosCompleto();
+  closeModal('modal-finalizar-compra');
+  showToast('Gasto registrado ✓');
+  renderDashboard();
 }
 
 function renderComprasHistorial() {
