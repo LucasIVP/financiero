@@ -1048,11 +1048,20 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
       <div class="form-group" style="grid-column:1/-1"><label>Nombre</label><input type="text" id="eci-nombre" placeholder="Ej: Leche"></div>
       <div class="form-group"><label>Tema / Tienda</label><select id="eci-tema"></select></div>
-      <div class="form-group"><label>Cantidad</label><input type="number" id="eci-cantidad" min="1" value="1"></div>
-      <div class="form-group"><label>Precio de referencia</label><input type="number" id="eci-precio-est" placeholder="0" min="0"></div>
-      <div class="form-group"><label>Precio final pagado</label><input type="number" id="eci-precio-real" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Cantidad</label><input type="number" id="eci-cantidad" min="1" value="1" oninput="updateEciPreview()"></div>
+      <div class="form-group"><label>Precio de referencia</label><input type="number" id="eci-precio-est" placeholder="0" min="0" oninput="updateEciPreview()"></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Precio final pagado <span style="font-size:11px;color:var(--muted);font-weight:400">(total, no unitario)</span></label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="number" id="eci-precio-real" placeholder="total $" min="0" oninput="updateEciPreview()" style="flex:1;min-width:100px">
+          <button type="button" onclick="eciCalcularDesdeUnitario()" style="background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.35);color:var(--accent);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap">
+            🧮 Calcular desde ref + promo
+          </button>
+        </div>
+        <div id="eci-precio-preview" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+      </div>
       <div class="form-group"><label>Promoción</label>
-        <select id="eci-promo" onchange="toggleEciPromoExtra()" style="width:100%">
+        <select id="eci-promo" onchange="toggleEciPromoExtra();updateEciPreview()" style="width:100%">
           <option value="">Sin promoción</option>
           <option value="2x1">2x1</option>
           <option value="3x2">3x2</option>
@@ -1062,7 +1071,7 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
       </div>
       <div class="form-group" id="eci-promo-extra-wrap" style="display:none">
         <label id="eci-promo-extra-label">Porcentaje</label>
-        <input type="number" id="eci-promo-extra" placeholder="Ej: 20" min="0" max="100">
+        <input type="number" id="eci-promo-extra" placeholder="Ej: 20" min="0" max="100" oninput="updateEciPreview()">
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Mes de referencia</label><select id="eci-mes"></select></div>
       <div class="form-group"><label>Lugar de compra</label><input type="text" id="eci-lugar" placeholder="Ej: Coto, Disco..." list="ci-lugar-sugerencias"></div>
@@ -3987,6 +3996,56 @@ function toggleEciPromoExtra() {
   if (lbl) lbl.textContent = promo === 'desc2da' ? '% en 2ª unidad' : '% dto total';
 }
 
+function updateEciPreview() {
+  const preview = document.getElementById('eci-precio-preview');
+  if (!preview) return;
+  const precioRef = parseFloat(document.getElementById('eci-precio-est')?.value) || null;
+  const cantidad = parseInt(document.getElementById('eci-cantidad')?.value) || 1;
+  const precioFinal = parseFloat(document.getElementById('eci-precio-real')?.value);
+  const hasFinal = !isNaN(precioFinal) && document.getElementById('eci-precio-real')?.value !== '';
+  const promo = document.getElementById('eci-promo')?.value || '';
+  const promoExtra = parseFloat(document.getElementById('eci-promo-extra')?.value) || null;
+  const parts = [];
+
+  if (precioRef) {
+    const totalSinPromo = precioRef * cantidad;
+    const totalConPromo = calcPrecioConPromo(precioRef, cantidad, promo, promoExtra);
+    const totalRef = totalConPromo ?? totalSinPromo;
+    if (promo && totalConPromo) {
+      const ahorro = totalSinPromo - totalConPromo;
+      parts.push(`<span style="color:var(--muted)">Ref: <s>${fmtARS(totalSinPromo)}</s> → <strong>${fmtARS(totalRef)}</strong></span>`);
+      if (ahorro > 0) parts.push(`<span style="color:var(--green)">-${fmtARS(ahorro)} (${promo})</span>`);
+    } else if (cantidad > 1) {
+      parts.push(`<span style="color:var(--muted)">Ref: ${fmtARS(precioRef)}/u = <strong>${fmtARS(totalRef)}</strong></span>`);
+    }
+    if (hasFinal) {
+      const diff = precioFinal - totalRef;
+      if (Math.abs(diff) < 1) {
+        parts.push(`<span style="color:var(--green)">✓ igual al ref</span>`);
+      } else {
+        const color = diff > 0 ? 'var(--red)' : 'var(--green)';
+        parts.push(`<span style="color:${color}">${diff > 0 ? '+' : ''}${fmtARS(diff)} vs ref</span>`);
+      }
+    }
+  } else if (hasFinal && cantidad > 1) {
+    parts.push(`<span style="color:var(--muted)">${fmtARS(precioFinal / cantidad)}/u (x${cantidad})</span>`);
+  }
+
+  preview.innerHTML = parts.join(' · ');
+}
+
+function eciCalcularDesdeUnitario() {
+  const precioRef = parseFloat(document.getElementById('eci-precio-est')?.value) || null;
+  const cantidad = parseInt(document.getElementById('eci-cantidad')?.value) || 1;
+  const promo = document.getElementById('eci-promo')?.value || '';
+  const promoExtra = parseFloat(document.getElementById('eci-promo-extra')?.value) || null;
+  if (!precioRef) { showToast('Primero ingresá el precio de referencia', 'error'); return; }
+  const total = calcPrecioConPromo(precioRef, cantidad, promo, promoExtra) ?? (precioRef * cantidad);
+  document.getElementById('eci-precio-real').value = total;
+  updateEciPreview();
+  showToast(`Total calculado: ${fmtARS(total)} ✓`);
+}
+
 // ── Editar ítem de compra ─────────────────────────────────────────────────────
 function openEditCompra(id) {
   const x = db.comprasItems.find(i => i.id === id);
@@ -4022,6 +4081,7 @@ function openEditCompra(id) {
   const eciMes = document.getElementById('eci-mes');
   eciMes.innerHTML = opts.map(o => `<option value="${o.val}" ${o.val === x.mes_referencia ? 'selected' : ''}>${o.label}</option>`).join('');
 
+  setTimeout(updateEciPreview, 50);
   openModal('modal-edit-compra');
 }
 
