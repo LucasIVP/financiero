@@ -2096,7 +2096,7 @@ async function saveEditGasto() {
     const g = db.gastos.find(x => x.id === id);
     const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido };
     // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
-    if (cat === 'Suscripciones' || (g && g.recurrente)) {
+    if (cat === 'Suscripciones' || cat === 'Casa' || (g && g.recurrente)) {
       const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
       const fechaFinRaw = (document.getElementById('eg-fecha-fin-rec')?.value || '').trim();
       const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null; // "YYYY-MM" → "YYYY-MM-01" o null
@@ -2465,7 +2465,7 @@ function populateCatSelects(){
 function refreshEgRecurrentePanel(g) {
   const panel = document.getElementById('eg-recurrente-panel');
   if (!panel) return;
-  const esSuscripcion = g && (g.cat === 'Suscripciones');
+  const esSuscripcion = g && (g.cat === 'Suscripciones' || g.cat === 'Casa');
   panel.style.display = esSuscripcion ? 'block' : 'none';
   if (esSuscripcion) {
     document.getElementById('eg-recurrente').checked = !!g.recurrente && g.recurrente_activa !== false;
