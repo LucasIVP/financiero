@@ -640,7 +640,18 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategor
 
 -- Agregar columnas de promoción a compras_items (si no existen)
 ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo text;
-ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;</pre>
+ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;
+
+-- Agregar columnas de lugar y compartido a compras_items (si no existen)
+ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS lugar text;
+ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT false;
+
+-- RLS compartida: permite ver ítems de cualquier usuario si es_compartida = true
+-- Ejecutar en Supabase Dashboard > SQL Editor:
+-- DROP POLICY IF EXISTS "own compras_items" ON compras_items;
+-- CREATE POLICY "compras_items_shared" ON compras_items FOR ALL
+--   USING (auth.uid() = user_id OR es_compartida = true)
+--   WITH CHECK (auth.uid() = user_id);</pre>
       </details>
     </div>
   </div>
@@ -676,7 +687,7 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;</pre>
   </div>
   <div class="inner-tabs">
     <button class="inner-tab active" onclick="innerTab('compras','compras-lista',event)">📋 Lista actual</button>
-    <button class="inner-tab" onclick="innerTab('compras','compras-historial',event);renderComprasHistorial()">📅 Historial de precios</button>
+    <button class="inner-tab" onclick="innerTab('compras','compras-historial',event);renderComprasHistorial()">📊 Historial y comparativa</button>
     <button class="inner-tab" onclick="innerTab('compras','compras-temas',event);renderComprasTemas()">🏷️ Por tema</button>
   </div>
 
@@ -691,6 +702,8 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;</pre>
         <div class="form-group"><label>Precio estimado (opcional)</label><input type="number" id="ci-precio" placeholder="0" min="0"></div>
         <div class="form-group"><label>Notas</label><input type="text" id="ci-notas" placeholder="Opcional"></div>
         <div class="form-group"><label>Mes de referencia</label><select id="ci-mes"></select></div>
+        <div class="form-group"><label>Lugar de compra</label><input type="text" id="ci-lugar" placeholder="Ej: Coto, Disco, Almacén..." list="ci-lugar-sugerencias"><datalist id="ci-lugar-sugerencias"></datalist></div>
+        <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:6px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="ci-compartida" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Lista compartida (visible para los dos)</span></label></div>
         <div class="form-group"><label>Promoción</label>
           <select id="ci-promo" onchange="togglePromoExtra()" style="width:100%">
             <option value="">Sin promoción</option>
@@ -1051,6 +1064,8 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;</pre>
         <input type="number" id="eci-promo-extra" placeholder="Ej: 20" min="0" max="100">
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Mes de referencia</label><select id="eci-mes"></select></div>
+      <div class="form-group"><label>Lugar de compra</label><input type="text" id="eci-lugar" placeholder="Ej: Coto, Disco..." list="ci-lugar-sugerencias"></div>
+      <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:6px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eci-compartida" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Compartida</span></label></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eci-notas" placeholder="Opcional"></div>
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
@@ -1191,7 +1206,7 @@ async function loadAllData(){
       sb.from('prestamos_tc').select('*').eq('user_id',uid).order('created_at'),
       sb.from('prestamos_cuotas').select('*').eq('user_id',uid).order('fecha'),
       sb.from('subcategorias').select('*').eq('user_id',uid).order('nombre'),
-      sb.from('compras_items').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+      sb.from('compras_items').select('*').or(`user_id.eq.${uid},es_compartida.eq.true`).order('created_at',{ascending:false}),
       sb.from('compras_temas').select('*').eq('user_id',uid).order('nombre'),
     ]);
     db.gastos=(g.data||[]).map(x=>({...x,desc:x.descripcion}));
@@ -3645,11 +3660,13 @@ async function addCompraItem() {
   const mes = document.getElementById('ci-mes')?.value || new Date().toISOString().slice(0, 7);
   const promo = document.getElementById('ci-promo')?.value || '';
   const promoExtra = parseFloat(document.getElementById('ci-promo-extra')?.value) || null;
+  const lugar = document.getElementById('ci-lugar')?.value.trim() || null;
+  const esCompartida = document.getElementById('ci-compartida')?.checked || false;
   if (!nombre) { showToast('Ingresá el nombre del ítem', 'error'); return; }
   setBtnLoading('btn-add-compra', true);
   const { data, error } = await sb.from('compras_items').insert({
     user_id: currentUser.id, nombre, tema, cantidad, precio_estimado: precio, notas, mes_referencia: mes, comprado: false,
-    promo: promo || null, promo_extra: promoExtra || null
+    promo: promo || null, promo_extra: promoExtra || null, lugar, es_compartida: esCompartida
   }).select().single();
   setBtnLoading('btn-add-compra', false);
   if (error) { showToast(error.message, 'error'); return; }
@@ -3661,6 +3678,8 @@ async function addCompraItem() {
 
 function clearCompraForm() {
   const temaActual = document.getElementById('ci-tema')?.value || 'General';
+  const lugarActual = document.getElementById('ci-lugar')?.value || '';
+  const compartidaActual = document.getElementById('ci-compartida')?.checked || false;
   document.getElementById('ci-nombre').value = '';
   document.getElementById('ci-precio').value = '';
   document.getElementById('ci-notas').value = '';
@@ -3671,9 +3690,13 @@ function clearCompraForm() {
   if (promoExtEl) { promoExtEl.value = ''; }
   const promoWrap = document.getElementById('ci-promo-extra-wrap');
   if (promoWrap) promoWrap.style.display = 'none';
-  // Mantener el tema seleccionado
+  // Mantener tema, lugar y compartida
   const temaEl = document.getElementById('ci-tema');
   if (temaEl) temaEl.value = temaActual;
+  const lugarEl = document.getElementById('ci-lugar');
+  if (lugarEl) lugarEl.value = lugarActual;
+  const compEl = document.getElementById('ci-compartida');
+  if (compEl) compEl.checked = compartidaActual;
 }
 
 async function marcarComprado(id, comprado) {
@@ -3760,6 +3783,12 @@ function promoLabel(promo, promoExtra) {
 function renderCompras() {
   initComprasMesSelect();
   initComprasTemaSelect();
+  // Actualizar datalist de lugares con los ya usados
+  const datalist = document.getElementById('ci-lugar-sugerencias');
+  if (datalist) {
+    const lugares = [...new Set(db.comprasItems.filter(x => x.lugar).map(x => x.lugar))].sort();
+    datalist.innerHTML = lugares.map(l => `<option value="${l}">`).join('');
+  }
   const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
   const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
   const soloPendientes = document.getElementById('ci-filter-pendientes')?.checked || false;
@@ -3820,16 +3849,20 @@ function renderCompras() {
     const rows = tItems.map(x => {
       const precioEfectivo = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
       const promoBadge = x.promo ? `<span style="font-size:10px;background:rgba(255,179,71,0.15);color:var(--warn);border-radius:4px;padding:1px 5px;margin-left:4px">${promoLabel(x.promo, x.promo_extra)}</span>` : '';
+      const sharedBadge = x.es_compartida ? `<span style="font-size:10px;background:rgba(0,212,170,0.12);color:var(--accent2);border-radius:4px;padding:1px 5px;margin-left:4px">💑</span>` : '';
+      const esMio = x.user_id === currentUser.id;
       return `
       <tr>
         <td>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" ${x.comprado ? 'checked' : ''} onchange="marcarComprado('${x.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent2)">
-            <span style="${x.comprado ? 'text-decoration:line-through;color:var(--muted)' : 'font-weight:500'}">${x.nombre}</span>${promoBadge}
+            <span style="${x.comprado ? 'text-decoration:line-through;color:var(--muted)' : 'font-weight:500'}">${x.nombre}</span>${promoBadge}${sharedBadge}
           </label>
           ${x.notas ? `<div style="font-size:11px;color:var(--muted);margin-left:24px">${x.notas}</div>` : ''}
+          ${!esMio ? `<div style="font-size:10px;color:var(--accent2);margin-left:24px">agregado por tu pareja</div>` : ''}
         </td>
         <td style="color:var(--muted)">${x.cantidad > 1 ? `x${x.cantidad}` : '—'}</td>
+        <td style="color:var(--muted);font-size:12px">${x.lugar ? `<span style="font-size:11px;background:var(--surface2);border-radius:4px;padding:2px 6px">${x.lugar}</span>` : '—'}</td>
         <td style="color:var(--muted);font-size:12px">${precioEfectivo ? fmtARS(precioEfectivo) : (x.precio_estimado ? fmtARS(x.precio_estimado * x.cantidad) : '—')}</td>
         <td>
           <input type="number" value="${x.precio_real || ''}" placeholder="—" min="0"
@@ -3838,8 +3871,8 @@ function renderCompras() {
         </td>
         <td style="color:var(--muted);font-size:12px">${x.fecha_compra || '—'}</td>
         <td style="display:flex;gap:4px">
-          <button style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;opacity:.7" onclick="openEditCompra('${x.id}')" title="Editar">✏️</button>
-          <button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button>
+          ${esMio ? `<button style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;opacity:.7" onclick="openEditCompra('${x.id}')" title="Editar">✏️</button>
+          <button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -3847,7 +3880,7 @@ function renderCompras() {
     return `<div class="card" style="margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:12px;font-size:15px">🏷️ ${tema}</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Ítem</th><th>Cant.</th><th>Est.</th><th>Precio real</th><th>Fecha</th><th></th></tr></thead>
+        <thead><tr><th>Ítem</th><th>Cant.</th><th>Lugar</th><th>Est.</th><th>Precio real</th><th>Fecha</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
@@ -3887,6 +3920,9 @@ function openEditCompra(id) {
   document.getElementById('eci-notas').value = x.notas || '';
   document.getElementById('eci-promo').value = x.promo || '';
   document.getElementById('eci-promo-extra').value = x.promo_extra || '';
+  document.getElementById('eci-lugar').value = x.lugar || '';
+  const eciComp = document.getElementById('eci-compartida');
+  if (eciComp) eciComp.checked = !!x.es_compartida;
   toggleEciPromoExtra();
 
   // Populate tema select
@@ -3921,9 +3957,11 @@ async function saveEditCompra() {
   const mes = document.getElementById('eci-mes').value;
   const promo = document.getElementById('eci-promo').value || null;
   const promoExtra = parseFloat(document.getElementById('eci-promo-extra').value) || null;
+  const lugar = document.getElementById('eci-lugar')?.value.trim() || null;
+  const esCompartida = document.getElementById('eci-compartida')?.checked || false;
   if (!nombre) { showToast('El nombre no puede estar vacío', 'error'); return; }
   setBtnLoading('btn-save-compra', true);
-  const update = { nombre, tema, cantidad, precio_estimado: precioEst, precio_real: precioReal, notas, mes_referencia: mes, promo, promo_extra: promoExtra };
+  const update = { nombre, tema, cantidad, precio_estimado: precioEst, precio_real: precioReal, notas, mes_referencia: mes, promo, promo_extra: promoExtra, lugar, es_compartida: esCompartida };
   if (precioReal) { update.fecha_compra = new Date().toISOString().slice(0, 10); update.comprado = true; }
   const { error } = await sb.from('compras_items').update(update).eq('id', id);
   setBtnLoading('btn-save-compra', false);
@@ -4014,21 +4052,69 @@ async function confirmarFinalizarCompra() {
 }
 
 function renderComprasHistorial() {
-  // Agrupar ítems por nombre, mostrar evolución de precios
+  const container = document.getElementById('compras-historial-container');
   const conPrecio = db.comprasItems.filter(x => x.precio_real && x.mes_referencia);
+
+  // ── Sección 1: Evolución de precios por producto ──────────────────────────
   const porNombre = {};
   conPrecio.forEach(x => {
     if (!porNombre[x.nombre]) porNombre[x.nombre] = [];
-    porNombre[x.nombre].push({ mes: x.mes_referencia, precio: x.precio_real, cantidad: x.cantidad });
+    porNombre[x.nombre].push({ mes: x.mes_referencia, precio: x.precio_real, cantidad: x.cantidad, lugar: x.lugar });
   });
 
-  const container = document.getElementById('compras-historial-container');
+  // ── Sección 2: Comparativa por lugar ─────────────────────────────────────
+  // Para cada producto que se compró en 2+ lugares, mostrar comparativa
+  const conLugar = conPrecio.filter(x => x.lugar);
+  const porProductoLugar = {};
+  conLugar.forEach(x => {
+    if (!porProductoLugar[x.nombre]) porProductoLugar[x.nombre] = {};
+    if (!porProductoLugar[x.nombre][x.lugar]) porProductoLugar[x.nombre][x.lugar] = [];
+    porProductoLugar[x.nombre][x.lugar].push(x.precio_real);
+  });
+  // Solo productos con 2+ lugares distintos
+  const comparables = Object.entries(porProductoLugar).filter(([_, lug]) => Object.keys(lug).length >= 2);
+
   if (Object.keys(porNombre).length === 0) {
     container.innerHTML = '<div class="empty-state">Aún no hay precios registrados. Completá el campo "Precio real" al comprar ítems.</div>';
     return;
   }
 
-  container.innerHTML = Object.entries(porNombre).map(([nombre, registros]) => {
+  // Render comparativa
+  let comparativaHTML = '';
+  if (comparables.length > 0) {
+    comparativaHTML = `<div class="card" style="margin-bottom:20px;border:1px solid rgba(108,99,255,0.25)">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">🏪 Comparativa por lugar de compra</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Productos comprados en más de un lugar — precio promedio unitario</div>
+      ${comparables.map(([nombre, lugares]) => {
+        const lugaresData = Object.entries(lugares).map(([lugar, precios]) => ({
+          lugar,
+          promedio: precios.reduce((s, p) => s + p, 0) / precios.length,
+          veces: precios.length
+        })).sort((a, b) => a.promedio - b.promedio);
+        const minPrecio = lugaresData[0].promedio;
+        return `<div style="margin-bottom:14px">
+          <div style="font-weight:600;margin-bottom:8px">${nombre}</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${lugaresData.map((l, i) => {
+              const diff = i === 0 ? null : ((l.promedio - minPrecio) / minPrecio * 100).toFixed(1);
+              return `<div style="display:flex;align-items:center;gap:10px">
+                <span style="min-width:120px;font-size:13px">${i === 0 ? '🏆 ' : ''}${l.lugar}</span>
+                <div style="flex:1;background:var(--surface2);border-radius:4px;height:8px;overflow:hidden">
+                  <div style="height:8px;background:${i===0?'var(--accent2)':'var(--accent)'};border-radius:4px;width:${Math.round(minPrecio/l.promedio*100)}%"></div>
+                </div>
+                <span style="font-size:13px;font-weight:600;min-width:80px;text-align:right">${fmtARS(l.promedio)}</span>
+                ${diff ? `<span style="font-size:11px;color:var(--red);min-width:50px">+${diff}%</span>` : '<span style="font-size:11px;color:var(--accent2);min-width:50px">más barato</span>'}
+                <span style="font-size:11px;color:var(--muted)">${l.veces}x</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">')}
+    </div>`;
+  }
+
+  // Render historial por producto
+  const historialHTML = Object.entries(porNombre).map(([nombre, registros]) => {
     registros.sort((a, b) => a.mes.localeCompare(b.mes));
     const ultimo = registros[registros.length - 1];
     const primero = registros[0];
@@ -4036,6 +4122,7 @@ function renderComprasHistorial() {
     const filas = registros.map(r => `
       <tr>
         <td style="color:var(--muted)">${r.mes}</td>
+        <td style="color:var(--muted);font-size:12px">${r.lugar ? `<span style="background:var(--surface2);border-radius:4px;padding:1px 6px">${r.lugar}</span>` : '—'}</td>
         <td style="font-weight:600">${fmtARS(r.precio)}</td>
         <td style="color:var(--muted)">${r.cantidad > 1 ? `x${r.cantidad} = ${fmtARS(r.precio * r.cantidad)}` : '—'}</td>
       </tr>`).join('');
@@ -4048,11 +4135,13 @@ function renderComprasHistorial() {
         </span>` : ''}
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Mes</th><th>Precio unitario</th><th>Total</th></tr></thead>
+        <thead><tr><th>Mes</th><th>Lugar</th><th>Precio unitario</th><th>Total</th></tr></thead>
         <tbody>${filas}</tbody>
       </table></div>
     </div>`;
   }).join('');
+
+  container.innerHTML = comparativaHTML + historialHTML;
 }
 
 async function addTema() {
