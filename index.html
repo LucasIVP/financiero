@@ -3654,6 +3654,7 @@ async function addCompraItem() {
 }
 
 function clearCompraForm() {
+  const temaActual = document.getElementById('ci-tema')?.value || 'General';
   document.getElementById('ci-nombre').value = '';
   document.getElementById('ci-precio').value = '';
   document.getElementById('ci-notas').value = '';
@@ -3664,6 +3665,9 @@ function clearCompraForm() {
   if (promoExtEl) { promoExtEl.value = ''; }
   const promoWrap = document.getElementById('ci-promo-extra-wrap');
   if (promoWrap) promoWrap.style.display = 'none';
+  // Mantener el tema seleccionado
+  const temaEl = document.getElementById('ci-tema');
+  if (temaEl) temaEl.value = temaActual;
 }
 
 async function marcarComprado(id, comprado) {
@@ -3760,16 +3764,22 @@ function renderCompras() {
   }, 0);
   const totalReal = items.filter(x => x.precio_real).reduce((s, x) => s + (x.precio_real * x.cantidad), 0);
 
-  // Calculadora: suma precios reales de comprados en la sesión actual
-  const calcItems = items.filter(x => x.comprado && x.precio_real);
-  const calcTotal = calcItems.reduce((s, x) => s + (x.precio_real * x.cantidad), 0);
+  // Calculadora: suma precios reales de comprados + estimados de pendientes con precio
+  const calcComprados = items.filter(x => x.comprado && x.precio_real);
+  const calcPendientesConPrecio = items.filter(x => !x.comprado && x.precio_estimado);
+  const calcTotal = calcComprados.reduce((s, x) => s + (x.precio_real * x.cantidad), 0)
+    + calcPendientesConPrecio.reduce((s, x) => {
+        const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
+        return s + (ef ?? x.precio_estimado * x.cantidad);
+      }, 0);
+  const itemsConPrecio = items.filter(x => x.precio_real || x.precio_estimado);
   const calcBar = document.getElementById('compras-calc-bar');
   if (calcBar) {
-    calcBar.style.display = calcItems.length > 0 ? 'block' : 'none';
+    calcBar.style.display = itemsConPrecio.length > 0 ? 'block' : 'none';
     const el = document.getElementById('calc-total-display');
     const elN = document.getElementById('calc-items-display');
     if (el) el.textContent = fmtARS(calcTotal);
-    if (elN) elN.textContent = `${calcItems.length} ítem${calcItems.length !== 1 ? 's' : ''} marcado${calcItems.length !== 1 ? 's' : ''}`;
+    if (elN) elN.textContent = `${calcComprados.length} comprado${calcComprados.length !== 1 ? 's' : ''} · ${calcPendientesConPrecio.length} pendiente${calcPendientesConPrecio.length !== 1 ? 's' : ''} con precio`;
   }
 
   document.getElementById('compras-kpis').innerHTML = `
