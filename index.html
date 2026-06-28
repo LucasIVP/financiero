@@ -1592,7 +1592,7 @@ function generatePlanId() {
 async function addGasto(){
   const fecha=document.getElementById('g-fecha').value,desc=document.getElementById('g-desc').value.trim(),monto=parseFloat(document.getElementById('g-monto').value),moneda=document.getElementById('g-moneda').value,cat=document.getElementById('g-cat').value,tipo=document.getElementById('g-tipo').value,medio=document.getElementById('g-medio').value,notas=document.getElementById('g-notas').value.trim();
   if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
-  const esRecurrente = (cat === 'Suscripciones' || cat === 'Casa') && !!document.getElementById('g-recurrente')?.checked;
+  const esRecurrente = !!document.getElementById('g-recurrente')?.checked;
   setBtnLoading('btn-add-gasto',true);
 
   if(medio==='credito'){
@@ -2037,7 +2037,7 @@ async function saveEditGasto() {
   if (planId) {
     const cuotasDelPlan = db.gastos.filter(g => g.plan_id === planId);
     const ncuotas = cuotasDelPlan.length || 1;
-    const recActiva = cat === 'Suscripciones' && (document.getElementById('eg-recurrente')?.checked ?? false);
+    const recActiva = !!(document.getElementById('eg-recurrente')?.checked ?? false);
 
     if (recActiva) {
       // CONVERTIR PLAN A SUSCRIPCIÓN RECURRENTE:
@@ -2096,7 +2096,7 @@ async function saveEditGasto() {
     const g = db.gastos.find(x => x.id === id);
     const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido };
     // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
-    if (cat === 'Suscripciones' || cat === 'Casa' || (g && g.recurrente)) {
+    if (true || (g && g.recurrente)) {
       const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
       const fechaFinRaw = (document.getElementById('eg-fecha-fin-rec')?.value || '').trim();
       const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null; // "YYYY-MM" → "YYYY-MM-01" o null
@@ -2109,7 +2109,7 @@ async function saveEditGasto() {
     if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
   }
 
-  const recActivado = cat === 'Suscripciones' && document.getElementById('eg-recurrente')?.checked;
+  const recActivado = !!document.getElementById('eg-recurrente')?.checked;
   setBtnLoading('btn-save-gasto', false);
   await refreshGastosCompleto();
   closeModal('modal-edit-gasto');
@@ -2465,9 +2465,9 @@ function populateCatSelects(){
 function refreshEgRecurrentePanel(g) {
   const panel = document.getElementById('eg-recurrente-panel');
   if (!panel) return;
-  const esSuscripcion = g && (g.cat === 'Suscripciones' || g.cat === 'Casa');
-  panel.style.display = esSuscripcion ? 'block' : 'none';
-  if (esSuscripcion) {
+  const esRecurrenteElegible = g && g.tipo !== 'inusual' && g.tipo !== 'ahorro';
+  panel.style.display = esRecurrenteElegible ? 'block' : 'none';
+  if (esRecurrenteElegible) {
     document.getElementById('eg-recurrente').checked = !!g.recurrente && g.recurrente_activa !== false;
     document.getElementById('eg-fecha-fin-rec').value = g.fecha_fin_recurrencia ? g.fecha_fin_recurrencia.slice(0,7) : '';
     // Mostrar advertencia si tiene plan_id
@@ -3461,13 +3461,9 @@ function populateSubcatSelect(selectId, catName, currentValue) {
 
 function onCatChangeGasto() {
   const cat = document.getElementById('g-cat')?.value || '';
-  // Recurrente: mostrar para Suscripciones Y para categorías con gastos recurrentes (ej. Casa)
+  // Recurrente: mostrar para cualquier categoría (se aplica solo a gastos tipo Regular)
   const recField = document.getElementById('g-recurrente-field');
-  if (recField) recField.style.display = (cat === 'Suscripciones' || cat === 'Casa') ? 'block' : 'none';
-  if (cat !== 'Suscripciones' && cat !== 'Casa') {
-    const cb = document.getElementById('g-recurrente');
-    if (cb) { cb.checked = false; toggleRecurrenteOpts('g'); }
-  }
+  if (recField) recField.style.display = 'block';
   // Subcategorías
   const subcatField = document.getElementById('g-subcat-field');
   const subs = getSubcatsDe(cat);
@@ -3483,7 +3479,7 @@ function onEgCatChange() {
   populateSubcatSelect('eg-subcat', cat, '');
   // Recurrente panel en edición
   const panel = document.getElementById('eg-recurrente-panel');
-  if (panel) panel.style.display = (cat === 'Suscripciones' || cat === 'Casa') ? 'block' : 'none';
+  if (panel) panel.style.display = 'block';
 }
 
 function renderSubcatList() {
@@ -3540,7 +3536,7 @@ async function deleteSubcategoria(id) {
 // ============================================================
 
 function getRecurrentesCasa() {
-  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat !== 'Suscripciones' && g.user_id === currentUser.id);
+  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.user_id === currentUser.id);
   const vistos = new Set();
   return todos.filter(g => {
     const key = g.plan_id || g.id;
@@ -3567,7 +3563,7 @@ function recurrenteCasaActivaEnMes(g, month, year) {
 function getGastosConRecurrentesCasa(month, year, gastosBase) {
   const ymStr = `${year}-${String(month + 1).padStart(2, '0')}`;
   const reales = gastosBase || filterByMonth(db.gastos, month, year);
-  const idsReales = new Set(reales.filter(g => g.recurrente && g.cat !== 'Suscripciones').map(g => g.id));
+  const idsReales = new Set(reales.filter(g => g.recurrente).map(g => g.id));
   const recurrentes = getRecurrentesCasa();
   const virtuales = recurrentes
     .filter(g => recurrenteCasaActivaEnMes(g, month, year) && !idsReales.has(g.id))
