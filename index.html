@@ -1108,6 +1108,13 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
             <option value="transferencia">Transferencia</option>
           </select>
         </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="fc-compartido" style="width:16px;height:16px;accent-color:var(--accent2)" checked>
+            <span style="color:var(--accent2);font-weight:600">💑 Marcar como gasto compartido</span>
+            <span style="font-size:11px;color:var(--muted);font-weight:400">(aparece en sección Compartido)</span>
+          </label>
+        </div>
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -4171,6 +4178,7 @@ async function confirmarFinalizarCompra() {
   const desc = document.getElementById('fc-desc').value.trim();
   const cat = document.getElementById('fc-cat').value;
   const medio = document.getElementById('fc-medio').value;
+  const esCompartido = document.getElementById('fc-compartido')?.checked || false;
   const total = parseFloat(document.getElementById('fc-total').textContent.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
   const montoNum = (() => {
     const raw = document.getElementById('fc-total').textContent;
@@ -4180,7 +4188,7 @@ async function confirmarFinalizarCompra() {
   setBtnLoading('btn-confirmar-compra', true);
   const { error } = await sb.from('gastos').insert({
     user_id: currentUser.id, fecha, descripcion: desc, monto: montoNum, moneda: 'ARS',
-    cat, tipo: 'regular', medio, notas: 'Registrado desde Lista de Compras'
+    cat, tipo: 'regular', medio, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras'
   });
   setBtnLoading('btn-confirmar-compra', false);
   if (error) { showToast(error.message, 'error'); return; }
