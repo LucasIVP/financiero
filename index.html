@@ -612,8 +612,8 @@ CREATE TABLE compras_items (
   nombre text NOT NULL,
   tema text DEFAULT 'General',
   cantidad integer DEFAULT 1,
-  precio_estimado numeric,
-  precio_real numeric,
+  precio_estimado numeric,  -- precio de referencia (visto en góndola o web antes de comprar)
+  precio_real numeric,       -- precio final pagado (puede diferir por promos en caja, pesables, etc.)
   notas text,
   mes_referencia text,
   comprado boolean DEFAULT false,
@@ -699,7 +699,7 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
         <div class="form-group"><label>Nombre</label><input type="text" id="ci-nombre" placeholder="Ej: Leche"></div>
         <div class="form-group"><label>Tema / Tienda</label><select id="ci-tema"><option value="General">General</option></select></div>
         <div class="form-group"><label>Cantidad</label><input type="number" id="ci-cantidad" placeholder="1" min="1" value="1"></div>
-        <div class="form-group"><label>Precio estimado (opcional)</label><input type="number" id="ci-precio" placeholder="0" min="0"></div>
+        <div class="form-group"><label>Precio de referencia</label><input type="number" id="ci-precio" placeholder="0" min="0"></div>
         <div class="form-group"><label>Notas</label><input type="text" id="ci-notas" placeholder="Opcional"></div>
         <div class="form-group"><label>Mes de referencia</label><select id="ci-mes"></select></div>
         <div class="form-group"><label>Lugar de compra</label><input type="text" id="ci-lugar" placeholder="Ej: Coto, Disco, Almacén..." list="ci-lugar-sugerencias"><datalist id="ci-lugar-sugerencias"></datalist></div>
@@ -735,6 +735,7 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
           <span style="font-size:13px;color:var(--muted)">🧮 Calculadora de compra</span>
           <span style="font-size:20px;font-weight:700;color:var(--accent2)" id="calc-total-display">$0</span>
           <span style="font-size:12px;color:var(--muted)" id="calc-items-display">0 ítems marcados</span>
+          <span style="font-size:12px;color:var(--green)" id="calc-ahorro-display"></span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" onclick="resetCalc()" style="font-size:12px;padding:6px 12px">🔄 Reiniciar</button>
@@ -1048,8 +1049,8 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
       <div class="form-group" style="grid-column:1/-1"><label>Nombre</label><input type="text" id="eci-nombre" placeholder="Ej: Leche"></div>
       <div class="form-group"><label>Tema / Tienda</label><select id="eci-tema"></select></div>
       <div class="form-group"><label>Cantidad</label><input type="number" id="eci-cantidad" min="1" value="1"></div>
-      <div class="form-group"><label>Precio estimado</label><input type="number" id="eci-precio-est" placeholder="0" min="0"></div>
-      <div class="form-group"><label>Precio real pagado</label><input type="number" id="eci-precio-real" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Precio de referencia</label><input type="number" id="eci-precio-est" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Precio final pagado</label><input type="number" id="eci-precio-real" placeholder="0" min="0"></div>
       <div class="form-group"><label>Promoción</label>
         <select id="eci-promo" onchange="toggleEciPromoExtra()" style="width:100%">
           <option value="">Sin promoción</option>
@@ -3702,14 +3703,11 @@ function clearCompraForm() {
 async function marcarComprado(id, comprado) {
   const item = db.comprasItems.find(x => x.id === id);
   if (!item) return;
-  // Si se marca comprado, pedir precio real si no hay
-  let precioReal = item.precio_real;
-  if (comprado && !precioReal) {
-    const input = prompt(`¿Cuánto pagaste por "${item.nombre}"? (opcional, Enter para omitir)`);
-    precioReal = input && !isNaN(parseFloat(input)) ? parseFloat(input) : null;
-  }
+  // Si se marca comprado y no tiene precio final, usar el de referencia automáticamente
   const update = { comprado, fecha_compra: comprado ? new Date().toISOString().slice(0, 10) : null };
-  if (precioReal !== undefined) update.precio_real = precioReal;
+  if (comprado && !item.precio_real && item.precio_estimado) {
+    update.precio_real = item.precio_estimado;
+  }
   const { error } = await sb.from('compras_items').update(update).eq('id', id);
   if (error) { showToast(error.message, 'error'); return; }
   Object.assign(item, update);
@@ -3738,6 +3736,17 @@ async function updatePrecioCompra(id, precio) {
   const item = db.comprasItems.find(x => x.id === id);
   if (item) item.precio_real = p;
   renderCompras();
+}
+
+async function confirmarPrecioRef(id) {
+  // Copia precio_estimado (referencia) al precio_real (final) sin necesidad de re-escribirlo
+  const item = db.comprasItems.find(x => x.id === id);
+  if (!item || !item.precio_estimado) return;
+  const { error } = await sb.from('compras_items').update({ precio_real: item.precio_estimado }).eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  item.precio_real = item.precio_estimado;
+  renderCompras();
+  showToast('Precio confirmado ✓');
 }
 
 
@@ -3819,7 +3828,16 @@ function renderCompras() {
     if (el) el.textContent = fmtARS(calcTotal);
     const conReal = itemsConPrecioReal.length;
     const soloEst = itemsSoloPrecioEst.length;
-    if (elN) elN.textContent = `${conReal} con precio real · ${soloEst} con estimado`;
+    // Ahorro total por promos
+    const ahorroTotal = items.reduce((s, x) => {
+      if (!x.precio_estimado || !x.promo) return s;
+      const sinP = x.precio_estimado * x.cantidad;
+      const conP = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra) ?? sinP;
+      return s + (sinP - conP);
+    }, 0);
+    const ahorroEl = document.getElementById('calc-ahorro-display');
+    if (ahorroEl) ahorroEl.textContent = ahorroTotal > 0 ? `· 🏷️ Ahorrás ${fmtARS(ahorroTotal)} en promos` : '';
+    if (elN) elN.textContent = `${conReal} con precio final · ${soloEst} solo con referencia`;
   }
 
   // Gasto real KPI = solo confirmados (checkbox) con precio real
@@ -3846,11 +3864,66 @@ function renderCompras() {
   if (items.length === 0) { container.innerHTML = '<div class="empty-state">No hay ítems en la lista</div>'; return; }
 
   container.innerHTML = Object.entries(porTema).map(([tema, tItems]) => {
+    // Subtotal por tema
+    const subtotalTema = tItems.reduce((s, x) => {
+      if (x.precio_real) return s + x.precio_real * x.cantidad;
+      const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
+      return s + (ef ?? (x.precio_estimado ? x.precio_estimado * x.cantidad : 0));
+    }, 0);
+    // Ahorro por promos en este tema
+    const ahorroTema = tItems.reduce((s, x) => {
+      if (!x.precio_estimado || !x.promo) return s;
+      const sinPromo = x.precio_estimado * x.cantidad;
+      const conPromo = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra) ?? sinPromo;
+      return s + (sinPromo - conPromo);
+    }, 0);
+
     const rows = tItems.map(x => {
-      const precioEfectivo = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
+      const precioRef = x.precio_estimado;
+      const precioFinal = x.precio_real;
+      const precioEfectivo = calcPrecioConPromo(precioRef, x.cantidad, x.promo, x.promo_extra);
+      const totalRef = precioEfectivo ?? (precioRef ? precioRef * x.cantidad : null);
+      const totalFinal = precioFinal ? precioFinal * x.cantidad : null;
+
+      // Diferencia entre referencia y final
+      const diferencia = (totalRef && totalFinal) ? totalFinal - totalRef : null;
+      const difColor = diferencia === null ? '' : diferencia > 0 ? 'var(--red)' : diferencia < 0 ? 'var(--green)' : 'var(--muted)';
+      const difLabel = diferencia === null ? '' : diferencia === 0
+        ? `<span style="font-size:10px;color:var(--green)">✓ igual</span>`
+        : `<span style="font-size:10px;color:${difColor}">${diferencia > 0 ? '+' : ''}${fmtARS(diferencia)}</span>`;
+
+      // Ahorro por promo en este ítem
+      const ahorroItem = (precioRef && x.promo) ? (() => {
+        const sinP = precioRef * x.cantidad;
+        const conP = precioEfectivo ?? sinP;
+        return sinP - conP;
+      })() : 0;
+
       const promoBadge = x.promo ? `<span style="font-size:10px;background:rgba(255,179,71,0.15);color:var(--warn);border-radius:4px;padding:1px 5px;margin-left:4px">${promoLabel(x.promo, x.promo_extra)}</span>` : '';
       const sharedBadge = x.es_compartida ? `<span style="font-size:10px;background:rgba(0,212,170,0.12);color:var(--accent2);border-radius:4px;padding:1px 5px;margin-left:4px">💑</span>` : '';
       const esMio = x.user_id === currentUser.id;
+
+      // Columna referencia: precio unitario + total + botón confirmar
+      const refCell = precioRef ? `
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13px;color:var(--muted)">${fmtARS(precioRef)}<span style="font-size:10px;color:var(--muted)">/u</span></div>
+            ${x.cantidad > 1 ? `<div style="font-size:10px;color:var(--muted)">Total: ${fmtARS(totalRef)}</div>` : ''}
+            ${ahorroItem > 0 ? `<div style="font-size:10px;color:var(--green)">Ahorrás ${fmtARS(ahorroItem)}</div>` : ''}
+          </div>
+          ${!precioFinal ? `<button onclick="confirmarPrecioRef('${x.id}')" title="Confirmar: este es el precio final" style="background:rgba(0,212,170,0.15);border:1px solid rgba(0,212,170,0.3);color:var(--accent2);border-radius:6px;padding:2px 7px;font-size:11px;cursor:pointer;white-space:nowrap">✓ Confirmar</button>` : ''}
+        </div>` : '<span style="color:var(--muted)">—</span>';
+
+      // Columna precio final
+      const finalCell = `
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+          <input type="number" value="${precioFinal || ''}" placeholder="—" min="0"
+            onblur="updatePrecioCompra('${x.id}', this.value)"
+            style="width:85px;background:var(--surface2);border:1px solid ${precioFinal ? 'var(--accent2)' : 'var(--border)'};border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;outline:none">
+          ${precioFinal && x.cantidad > 1 ? `<div style="font-size:10px;color:var(--muted)">=${fmtARS(totalFinal)}</div>` : ''}
+          ${difLabel}
+        </div>`;
+
       return `
       <tr>
         <td>
@@ -3861,26 +3934,29 @@ function renderCompras() {
           ${x.notas ? `<div style="font-size:11px;color:var(--muted);margin-left:24px">${x.notas}</div>` : ''}
           ${!esMio ? `<div style="font-size:10px;color:var(--accent2);margin-left:24px">agregado por tu pareja</div>` : ''}
         </td>
-        <td style="color:var(--muted)">${x.cantidad > 1 ? `x${x.cantidad}` : '—'}</td>
-        <td style="color:var(--muted);font-size:12px">${x.lugar ? `<span style="font-size:11px;background:var(--surface2);border-radius:4px;padding:2px 6px">${x.lugar}</span>` : '—'}</td>
-        <td style="color:var(--muted);font-size:12px">${precioEfectivo ? fmtARS(precioEfectivo) : (x.precio_estimado ? fmtARS(x.precio_estimado * x.cantidad) : '—')}</td>
-        <td>
-          <input type="number" value="${x.precio_real || ''}" placeholder="—" min="0"
-            onblur="updatePrecioCompra('${x.id}', this.value)"
-            style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;outline:none">
-        </td>
+        <td style="color:var(--muted);font-size:13px">${x.cantidad > 1 ? `x${x.cantidad}` : '1'}</td>
+        <td style="font-size:12px">${x.lugar ? `<span style="background:var(--surface2);border-radius:4px;padding:2px 6px;color:var(--muted)">${x.lugar}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+        <td>${refCell}</td>
+        <td>${finalCell}</td>
         <td style="color:var(--muted);font-size:12px">${x.fecha_compra || '—'}</td>
-        <td style="display:flex;gap:4px">
+        <td style="white-space:nowrap">
           ${esMio ? `<button style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;opacity:.7" onclick="openEditCompra('${x.id}')" title="Editar">✏️</button>
           <button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button>` : ''}
         </td>
       </tr>`;
     }).join('');
 
+    const subtotalLabel = subtotalTema > 0
+      ? `<span style="font-size:13px;color:var(--muted);font-weight:400">Subtotal: <strong style="color:var(--accent2)">${fmtARS(subtotalTema)}</strong>${ahorroTema > 0 ? ` · <span style="color:var(--green);font-size:12px">ahorrás ${fmtARS(ahorroTema)} en promos</span>` : ''}</span>`
+      : '';
+
     return `<div class="card" style="margin-bottom:16px">
-      <div style="font-weight:600;margin-bottom:12px;font-size:15px">🏷️ ${tema}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px">
+        <span style="font-weight:600;font-size:15px">🏷️ ${tema}</span>
+        ${subtotalLabel}
+      </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Ítem</th><th>Cant.</th><th>Lugar</th><th>Est.</th><th>Precio real</th><th>Fecha</th><th></th></tr></thead>
+        <thead><tr><th>Ítem</th><th>Cant.</th><th>Lugar</th><th>Referencia</th><th>Final pagado</th><th>Fecha</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
