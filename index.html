@@ -149,6 +149,7 @@
   <button class="nav-btn" onclick="goTo('inversiones')">📈 Inversiones</button>
   <button class="nav-btn" onclick="goTo('patrimonio')">🏦 Patrimonio</button>
   <button class="nav-btn" onclick="goTo('compartido')">🏠 Compartido</button>
+<button class="nav-btn" onclick="goTo('compras');renderCompras()">🛒 Compras</button>
 <button class="nav-btn" onclick="goTo('config')">⚙️ Config</button>
   <span class="nav-spacer"></span>
   <span class="nav-user" id="nav-user-email"></span>
@@ -188,6 +189,7 @@
     <button class="inner-tab active" onclick="innerTab('gastos','gastos-mes',event)">📋 Mes</button>
     <button class="inner-tab" onclick="innerTab('gastos','gastos-historial',event)">📅 Historial</button>
     <button class="inner-tab" onclick="innerTab('gastos','gastos-suscripciones',event);renderSuscripciones()">🔁 Suscripciones</button>
+    <button class="inner-tab" onclick="innerTab('gastos','gastos-recurrentes',event);renderRecurrentes()">🏡 Recurrentes</button>
   </div>
 
   <!-- Tab: Mes -->
@@ -204,6 +206,7 @@
         <div class="form-group"><label>Monto</label><input type="number" id="g-monto" placeholder="0" min="0"></div>
         <div class="form-group"><label>Moneda</label><select id="g-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
         <div class="form-group"><label>Categoría</label><select id="g-cat" onchange="onCatChangeGasto()"></select></div>
+        <div class="form-group" id="g-subcat-field" style="display:none"><label>Subcategoría</label><select id="g-subcat"><option value="">— Sin subcategoría —</option></select></div>
         <div class="form-group"><label>Tipo</label><select id="g-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
         <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
         <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
@@ -570,6 +573,17 @@
         <button class="btn btn-primary" onclick="addCategory()">+</button>
       </div>
     </div>
+    <div class="card" style="grid-column:1/-1">
+      <div style="font-weight:600;margin-bottom:14px">Subcategorías</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Definí subcategorías dentro de cada categoría. Al cargar un gasto, podrás seleccionar la subcategoría correspondiente.</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="flex:1;min-width:140px"><label>Categoría padre</label><select id="sub-cat-padre" onchange="renderSubcatList()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;width:100%"></select></div>
+        <div class="form-group" style="flex:1;min-width:140px"><label>Nombre subcategoría</label><input type="text" id="new-subcat-name" placeholder="Ej: Alquiler" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;width:100%"></div>
+        <div class="form-group" style="width:60px"><label>Emoji</label><input type="text" id="new-subcat-emoji" placeholder="🏷️" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);outline:none;text-align:center;width:100%"></div>
+        <button class="btn btn-primary" onclick="addSubcategoria()">+</button>
+      </div>
+      <div id="subcat-list"></div>
+    </div>
     <div class="card">
       <div style="font-weight:600;margin-bottom:14px">Datos</div>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -577,9 +591,136 @@
         <label class="btn btn-ghost" style="cursor:pointer">📥 Importar datos (JSON)<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>
         <button class="btn btn-danger" onclick="resetData()">🗑️ Borrar todos mis datos</button>
       </div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">🛠️ SQL para nuevas tablas (Supabase)</summary>
+        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- Subcategorías
+CREATE TABLE subcategorias (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users NOT NULL,
+  cat_nombre text NOT NULL,
+  nombre text NOT NULL,
+  emoji text,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE subcategorias ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own subcategorias" ON subcategorias FOR ALL USING (auth.uid()=user_id);
+
+-- Lista de compras - ítems
+CREATE TABLE compras_items (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users NOT NULL,
+  nombre text NOT NULL,
+  tema text DEFAULT 'General',
+  cantidad integer DEFAULT 1,
+  precio_estimado numeric,
+  precio_real numeric,
+  notas text,
+  mes_referencia text,
+  comprado boolean DEFAULT false,
+  fecha_compra date,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE compras_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own compras_items" ON compras_items FOR ALL USING (auth.uid()=user_id);
+
+-- Lista de compras - temas
+CREATE TABLE compras_temas (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users NOT NULL,
+  nombre text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE compras_temas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own compras_temas" ON compras_temas FOR ALL USING (auth.uid()=user_id);
+
+-- Agregar columna subcat_id a gastos (si no existe)
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS subcat_id uuid REFERENCES subcategorias(id);</pre>
+      </details>
     </div>
   </div>
 </div>
+  <!-- Tab: Recurrentes -->
+  <div id="gastos-gastos-recurrentes" class="inner-section">
+    <div class="card" style="margin-bottom:16px;background:rgba(0,212,170,0.06);border-color:rgba(0,212,170,0.3)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:20px">🏡</span>
+        <span style="font-weight:600;color:var(--accent2)">Gastos recurrentes</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted)">Gastos de categoría Casa y otros marcados como recurrentes. Se proyectan automáticamente en cada mes. Podés editarlos o darlos de baja.</div>
+    </div>
+    <div id="rec-kpis" class="grid-3" style="margin-bottom:20px"></div>
+    <div class="card">
+      <div class="section-header">
+        <span style="font-weight:600">Gastos recurrentes activos e inactivos</span>
+        <span id="rec-total-badge" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Medio</th><th>Estado</th><th>Inicio</th><th></th></tr></thead>
+        <tbody id="rec-table-body"></tbody></table>
+      </div>
+      <div id="rec-empty" class="empty-state" style="display:none">No hay gastos recurrentes. Cargá un gasto y marcalo como 🏡 recurrente.</div>
+    </div>
+  </div>
+</div>
+
+<!-- PÁGINA LISTA DE COMPRAS -->
+<div id="page-compras" class="page">
+  <div class="section-header" style="margin-bottom:16px">
+    <div class="section-title">🛒 Lista de Compras</div>
+  </div>
+  <div class="inner-tabs">
+    <button class="inner-tab active" onclick="innerTab('compras','compras-lista',event)">📋 Lista actual</button>
+    <button class="inner-tab" onclick="innerTab('compras','compras-historial',event);renderComprasHistorial()">📅 Historial de precios</button>
+    <button class="inner-tab" onclick="innerTab('compras','compras-temas',event);renderComprasTemas()">🏷️ Por tema</button>
+  </div>
+
+  <!-- Tab: Lista actual -->
+  <div id="compras-compras-lista" class="inner-section active">
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:14px">Agregar ítem</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Nombre</label><input type="text" id="ci-nombre" placeholder="Ej: Leche"></div>
+        <div class="form-group"><label>Tema / Tienda</label><select id="ci-tema"><option value="General">General</option></select></div>
+        <div class="form-group"><label>Cantidad</label><input type="number" id="ci-cantidad" placeholder="1" min="1" value="1"></div>
+        <div class="form-group"><label>Precio estimado (opcional)</label><input type="number" id="ci-precio" placeholder="0" min="0"></div>
+        <div class="form-group"><label>Notas</label><input type="text" id="ci-notas" placeholder="Opcional"></div>
+        <div class="form-group"><label>Mes de referencia</label><select id="ci-mes"></select></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px">
+        <button class="btn btn-primary" id="btn-add-compra" onclick="addCompraItem()">+ Agregar</button>
+        <button class="btn btn-ghost" onclick="clearCompraForm()">Limpiar</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <select id="ci-filter-mes" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"></select>
+      <select id="ci-filter-tema" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todos los temas</option></select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" id="ci-filter-pendientes" onchange="renderCompras()" style="accent-color:var(--accent)"> Solo pendientes</label>
+    </div>
+    <div id="compras-kpis" class="grid-3" style="margin-bottom:16px"></div>
+    <div id="compras-lista-container"></div>
+  </div>
+
+  <!-- Tab: Historial de precios -->
+  <div id="compras-compras-historial" class="inner-section">
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:10px">📈 Evolución de precios</div>
+      <div style="font-size:13px;color:var(--muted)">Compará cómo evolucionaron los precios de los ítems mes a mes.</div>
+    </div>
+    <div id="compras-historial-container"></div>
+  </div>
+
+  <!-- Tab: Por tema -->
+  <div id="compras-compras-temas" class="inner-section">
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:10px">Gestionar temas</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="text" id="new-tema-nombre" placeholder="Nuevo tema (ej: Supermercado)" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);outline:none">
+        <button class="btn btn-primary" onclick="addTema()">+ Tema</button>
+      </div>
+      <div id="temas-list" style="margin-top:14px"></div>
+    </div>
+    <div id="compras-temas-container"></div>
+  </div>
 </div>
 
 <!-- MODALS -->
@@ -594,7 +735,8 @@
       <div class="form-group"><label>Descripción</label><input type="text" id="eg-desc"></div>
       <div class="form-group"><label>Monto</label><input type="number" id="eg-monto" placeholder="0"></div>
       <div class="form-group"><label>Moneda</label><select id="eg-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-      <div class="form-group"><label>Categoría</label><select id="eg-cat"></select></div>
+      <div class="form-group"><label>Categoría</label><select id="eg-cat" onchange="onEgCatChange()"></select></div>
+      <div class="form-group" id="eg-subcat-field" style="display:none"><label>Subcategoría</label><select id="eg-subcat"><option value="">— Sin subcategoría —</option></select></div>
       <div class="form-group"><label>Tipo</label><select id="eg-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
       <div class="form-group"><label>Medio de pago</label><select id="eg-medio" onchange="toggleEditConvertir()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group"><label>Tarjeta</label><select id="eg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
@@ -868,6 +1010,8 @@ function emptyDB() {
     activos:[],deudas:[],patrimonioHistory:[],tarjetas:[],
     prestamos:[],prestamosCuotas:[],
     categorias:defaultCategories(),
+    subcategorias:[],
+    comprasItems:[],comprasTemas:[],
     config:{dolar:1400,dolar_fecha:'',obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30}
   };
 }
@@ -935,7 +1079,7 @@ async function loadAllData(){
   setLoading(true,'Cargando tus datos...');
   const uid=currentUser.id;
   try{
-    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc]=await Promise.all([
+    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc,subcat,citems,ctemas]=await Promise.all([
       sb.from('gastos').select('*').or(`user_id.eq.${uid},es_compartido.eq.true`).order('fecha',{ascending:false}),
       sb.from('ingresos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('cuotas').select('*').eq('user_id',uid),
@@ -948,6 +1092,9 @@ async function loadAllData(){
       sb.from('tarjetas').select('*').eq('user_id',uid).order('created_at'),
       sb.from('prestamos_tc').select('*').eq('user_id',uid).order('created_at'),
       sb.from('prestamos_cuotas').select('*').eq('user_id',uid).order('fecha'),
+      sb.from('subcategorias').select('*').eq('user_id',uid).order('nombre'),
+      sb.from('compras_items').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+      sb.from('compras_temas').select('*').eq('user_id',uid).order('nombre'),
     ]);
     db.gastos=(g.data||[]).map(x=>({...x,desc:x.descripcion}));
     // Migrar tipos viejos al cargar
@@ -971,6 +1118,9 @@ async function loadAllData(){
     db.tarjetas=tc.data||[];
     db.prestamos=pt.data||[];
     db.prestamosCuotas=ptc.data||[];
+    db.subcategorias=subcat.data||[];
+    db.comprasItems=citems.data||[];
+    db.comprasTemas=ctemas.data||[];
     if(!cfg.data){
       const defaults={user_id:uid,dolar:1400,dolar_fecha:new Date().toISOString().slice(0,10),obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30};
       await sb.from('config').insert(defaults);db.config=defaults;
@@ -1028,7 +1178,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig,compras:renderCompras};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -1040,17 +1190,6 @@ function innerTab(section,tab,evt){
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
-// RECURRENTES - mostrar/ocultar bloque según categoría
-function onCatChangeGasto() {
-  const cat = document.getElementById('g-cat')?.value || '';
-  const recField = document.getElementById('g-recurrente-field');
-  if (recField) recField.style.display = cat === 'Suscripciones' ? 'block' : 'none';
-  if (cat !== 'Suscripciones') {
-    const cb = document.getElementById('g-recurrente');
-    if (cb) { cb.checked = false; toggleRecurrenteOpts('g'); }
-  }
-}
-
 function toggleRecurrenteOpts(prefix) {
   const cb = document.getElementById(prefix + '-recurrente');
   const opts = document.getElementById(prefix + '-recurrente-opts');
@@ -1059,7 +1198,7 @@ function toggleRecurrenteOpts(prefix) {
 
 // Obtener suscripciones (gastos recurrentes): el gasto base tiene recurrente=true
 function getSuscripciones() {
-  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones');
+  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones' && g.user_id === currentUser.id);
   // Si tiene plan_id, usar solo la primera cuota como representante
   const vistos = new Set();
   return todos.filter(g => {
@@ -1084,7 +1223,7 @@ function suscripcionActivaEnMes(g, month, year) {
   return true;
 }
 
-// Inyectar gastos virtuales de suscripciones en la lista de un mes
+// Inyectar gastos virtuales de suscripciones Y recurrentes Casa en la lista de un mes
 function getGastosConSuscripciones(month, year) {
   const ymStr = `${year}-${String(month+1).padStart(2,'0')}`;
   const reales = filterByMonth(db.gastos, month, year);
@@ -1092,14 +1231,17 @@ function getGastosConSuscripciones(month, year) {
   const planIdsReales = new Set(reales.filter(g => g.plan_id && g.recurrente).map(g => g.plan_id));
   const idsReales = new Set(reales.filter(g => !g.plan_id && g.recurrente).map(g => g.id));
   // Suscripciones activas sin entrada real en este mes
-  const virtuales = getSuscripciones()
+  const virtualesSus = getSuscripciones()
     .filter(g => {
       if (!suscripcionActivaEnMes(g, month, year)) return false;
       if (g.plan_id) return !planIdsReales.has(g.plan_id);
       return !idsReales.has(g.id);
     })
     .map(g => ({ ...g, _virtual: true, fecha: `${ymStr}-01` }));
-  return [...reales, ...virtuales];
+  // Recurrentes Casa activos sin entrada real en este mes (se agregan al final para no romper el flujo)
+  // Nota: getGastosConRecurrentesCasa está definida más adelante pero JS la hoistea igualmente vía function declarations
+  const virtualesCasa = getGastosConRecurrentesCasa(month, year, reales);
+  return [...reales, ...virtualesSus, ...virtualesCasa];
 }
 
 function renderSuscripciones() {
@@ -1309,7 +1451,7 @@ function generatePlanId() {
 async function addGasto(){
   const fecha=document.getElementById('g-fecha').value,desc=document.getElementById('g-desc').value.trim(),monto=parseFloat(document.getElementById('g-monto').value),moneda=document.getElementById('g-moneda').value,cat=document.getElementById('g-cat').value,tipo=document.getElementById('g-tipo').value,medio=document.getElementById('g-medio').value,notas=document.getElementById('g-notas').value.trim();
   if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
-  const esRecurrente = cat === 'Suscripciones' && !!document.getElementById('g-recurrente')?.checked;
+  const esRecurrente = (cat === 'Suscripciones' || cat === 'Casa') && !!document.getElementById('g-recurrente')?.checked;
   setBtnLoading('btn-add-gasto',true);
 
   if(medio==='credito'){
@@ -1333,7 +1475,8 @@ async function addGasto(){
     showToast(`${n} cuota${n>1?'s':''} agregadas ✓`);
   } else {
     const esComp=document.getElementById('g-compartido').checked;
-    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp};
+    const subcatId = document.getElementById('g-subcat')?.value || null;
+    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null};
     if(esRecurrente){row.recurrente=true;row.recurrente_activa=true;}
     const{error}=await sb.from('gastos').insert(row);
     setBtnLoading('btn-add-gasto',false);
@@ -1413,6 +1556,7 @@ function renderGastos(){
   const{month:gMonth,year:gYear}=getSelectedMonthYear('g-month','g-year');
   tbody.innerHTML=gastos.map(g=>{
     const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};
+    const subcat=g.subcat_id?db.subcategorias.find(s=>s.id===g.subcat_id):null;
     const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);
     const montoFmt=g.moneda==='USD'&&!g.es_compartido?fmtUSD(g.monto):fmtARS(montoMostrar);
     const esGrupal=(g.desc||g.descripcion||'').includes('(parte grupal');
@@ -1421,7 +1565,7 @@ function renderGastos(){
     const acciones=g.user_id===currentUser.id
       ?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" style="margin-right:2px" onclick="deleteGasto('${g.id}')">🗑</button>${bajaBtnMes}`
       :'<span style="font-size:11px;color:var(--muted)">ajeno</span>';
-    return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span></td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -2124,6 +2268,7 @@ async function saveCfg(){
 }
 function renderConfig(){
   const cfg=db.config;
+  populateSubcatPadreSelect();
   document.getElementById('cfg-dolar').value=cfg.dolar||'';document.getElementById('cfg-dolar-fecha').value=cfg.dolar_fecha||'';
   document.getElementById('cfg-obj-ahorro').value=cfg.obj_ahorro||'';
   document.getElementById('cfg-obj-regular').value=cfg.obj_regular||'';document.getElementById('cfg-obj-inusual').value=cfg.obj_inusual||'';
@@ -3154,6 +3299,464 @@ function irAGastosConCat(cat, month, year) {
     if (cf) { cf.value = cat; renderGastos(); }
   }, 50);
 }
+
+
+// ============================================================
+// SUBCATEGORÍAS
+// ============================================================
+
+function getSubcatsDe(catName) {
+  return db.subcategorias.filter(s => s.cat_nombre === catName);
+}
+
+function populateSubcatSelect(selectId, catName, currentValue) {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  const subs = getSubcatsDe(catName);
+  el.innerHTML = '<option value="">— Sin subcategoría —</option>' + subs.map(s =>
+    `<option value="${s.id}" ${s.id === currentValue ? 'selected' : ''}>${s.emoji || ''} ${s.nombre}</option>`
+  ).join('');
+}
+
+function onCatChangeGasto() {
+  const cat = document.getElementById('g-cat')?.value || '';
+  // Recurrente: mostrar para Suscripciones Y para categorías con gastos recurrentes (ej. Casa)
+  const recField = document.getElementById('g-recurrente-field');
+  if (recField) recField.style.display = (cat === 'Suscripciones' || cat === 'Casa') ? 'block' : 'none';
+  if (cat !== 'Suscripciones' && cat !== 'Casa') {
+    const cb = document.getElementById('g-recurrente');
+    if (cb) { cb.checked = false; toggleRecurrenteOpts('g'); }
+  }
+  // Subcategorías
+  const subcatField = document.getElementById('g-subcat-field');
+  const subs = getSubcatsDe(cat);
+  if (subcatField) subcatField.style.display = subs.length > 0 ? 'block' : 'none';
+  populateSubcatSelect('g-subcat', cat, '');
+}
+
+function onEgCatChange() {
+  const cat = document.getElementById('eg-cat')?.value || '';
+  const subcatField = document.getElementById('eg-subcat-field');
+  const subs = getSubcatsDe(cat);
+  if (subcatField) subcatField.style.display = subs.length > 0 ? 'block' : 'none';
+  populateSubcatSelect('eg-subcat', cat, '');
+  // Recurrente panel en edición
+  const panel = document.getElementById('eg-recurrente-panel');
+  if (panel) panel.style.display = (cat === 'Suscripciones' || cat === 'Casa') ? 'block' : 'none';
+}
+
+function renderSubcatList() {
+  const catPadre = document.getElementById('sub-cat-padre')?.value || '';
+  const subs = getSubcatsDe(catPadre);
+  const el = document.getElementById('subcat-list');
+  if (!el) return;
+  if (subs.length === 0) { el.innerHTML = '<div class="empty-state" style="padding:20px">No hay subcategorías para esta categoría</div>'; return; }
+  el.innerHTML = subs.map(s => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:18px">${s.emoji || '🏷️'}</span>
+      <span style="flex:1;font-size:14px">${s.nombre}</span>
+      <button class="del-btn" onclick="deleteSubcategoria('${s.id}')">🗑</button>
+    </div>`).join('');
+}
+
+function populateSubcatPadreSelect() {
+  const el = document.getElementById('sub-cat-padre');
+  if (!el) return;
+  el.innerHTML = db.categorias.map(c => `<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');
+  renderSubcatList();
+}
+
+async function addSubcategoria() {
+  const catNombre = document.getElementById('sub-cat-padre')?.value || '';
+  const nombre = document.getElementById('new-subcat-name')?.value.trim() || '';
+  const emoji = document.getElementById('new-subcat-emoji')?.value.trim() || '';
+  if (!catNombre || !nombre) { showToast('Completá la categoría y el nombre', 'error'); return; }
+  const { data, error } = await sb.from('subcategorias').insert({
+    user_id: currentUser.id, cat_nombre: catNombre, nombre, emoji
+  }).select().single();
+  if (error) { showToast(error.message, 'error'); return; }
+  db.subcategorias.push(data);
+  document.getElementById('new-subcat-name').value = '';
+  document.getElementById('new-subcat-emoji').value = '';
+  renderSubcatList();
+  showToast('Subcategoría agregada ✓');
+}
+
+async function deleteSubcategoria(id) {
+  const s = db.subcategorias.find(x => x.id === id);
+  if (!s) return;
+  confirmarEliminar(s.nombre, 'Se eliminará esta subcategoría.', async () => {
+    const { error } = await sb.from('subcategorias').delete().eq('id', id);
+    if (error) { showToast(error.message, 'error'); return; }
+    db.subcategorias = db.subcategorias.filter(x => x.id !== id);
+    renderSubcatList();
+    showToast('Subcategoría eliminada');
+  });
+}
+
+// ============================================================
+// RECURRENTES CASA (gastos recurrentes no-Suscripciones)
+// ============================================================
+
+function getRecurrentesCasa() {
+  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat !== 'Suscripciones' && g.user_id === currentUser.id);
+  const vistos = new Set();
+  return todos.filter(g => {
+    const key = g.plan_id || g.id;
+    if (vistos.has(key)) return false;
+    vistos.add(key);
+    return true;
+  }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+function recurrenteCasaActivaEnMes(g, month, year) {
+  if (!g.recurrente) return false;
+  const inicio = new Date(g.fecha + 'T12:00:00');
+  const mesGasto = new Date(year, month, 1);
+  if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
+  if (g.fecha_fin_recurrencia) {
+    const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
+    if (mesGasto >= fin) return false;
+  }
+  if (g.recurrente_activa === false) return false;
+  return true;
+}
+
+// Inyectar virtuales de recurrentes Casa en lista de gastos del mes
+function getGastosConRecurrentesCasa(month, year, gastosBase) {
+  const ymStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const reales = gastosBase || filterByMonth(db.gastos, month, year);
+  const idsReales = new Set(reales.filter(g => g.recurrente && g.cat !== 'Suscripciones').map(g => g.id));
+  const recurrentes = getRecurrentesCasa();
+  const virtuales = recurrentes
+    .filter(g => recurrenteCasaActivaEnMes(g, month, year) && !idsReales.has(g.id))
+    .map(g => ({ ...g, _virtual: true, _tipo_rec: 'casa', fecha: `${ymStr}-01` }));
+  return virtuales;
+}
+
+function renderRecurrentes() {
+  const recs = getRecurrentesCasa();
+  const activos = recs.filter(g => g.recurrente_activa !== false && !g.fecha_fin_recurrencia);
+  const totalMes = activos.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+
+  document.getElementById('rec-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Recurrentes activos</div><div class="card-value" style="color:var(--accent2)">${activos.length}</div><div class="card-sub">gastos mensuales</div></div>
+    <div class="card"><div class="card-title">Total mensual estimado</div><div class="card-value amount-negative">${fmtARS(totalMes)}</div></div>
+    <div class="card"><div class="card-title">Categorías</div><div class="card-value">${[...new Set(activos.map(g=>g.cat))].length}</div></div>`;
+
+  const tbody = document.getElementById('rec-table-body');
+  const empty = document.getElementById('rec-empty');
+
+  if (recs.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  recs.sort((a, b) => {
+    const aAct = a.recurrente_activa !== false && !a.fecha_fin_recurrencia;
+    const bAct = b.recurrente_activa !== false && !b.fecha_fin_recurrencia;
+    if (aAct !== bAct) return aAct ? -1 : 1;
+    return a.cat.localeCompare(b.cat);
+  });
+
+  tbody.innerHTML = recs.map(g => {
+    const activa = g.recurrente_activa !== false && !g.fecha_fin_recurrencia;
+    const catObj = db.categorias.find(c => c.name === g.cat) || { emoji: '📄' };
+    const estado = activa
+      ? `<span style="color:var(--green);font-weight:600">● Activo</span>`
+      : `<span style="color:var(--muted)">● Inactivo</span>`;
+    return `<tr>
+      <td><div style="font-weight:500">${g.desc || g.descripcion}</div>${g.notas ? `<div style="font-size:11px;color:var(--muted)">${g.notas}</div>` : ''}</td>
+      <td><span class="tag">${catObj.emoji} ${g.cat}</span></td>
+      <td class="amount-negative" style="font-weight:600">${g.moneda === 'USD' ? fmtUSD(g.monto) : fmtARS(g.monto)}</td>
+      <td style="color:var(--muted)">${g.medio}</td>
+      <td>${estado}</td>
+      <td style="color:var(--muted)">${g.fecha}</td>
+      <td style="white-space:nowrap">
+        <button class="del-btn" onclick="abrirEditGasto('${g.id}')">✏️</button>
+        <button class="del-btn" onclick="darDeBajaRecurrente('${g.id}')" style="color:var(--red)" title="Dar de baja">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function darDeBajaRecurrente(id) {
+  const g = db.gastos.find(x => x.id === id);
+  if (!g) return;
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  confirmarEliminar(g.desc || g.descripcion, `Se dará de baja desde ${mesActual}. Los meses anteriores quedan registrados.`, async () => {
+    const { error } = await sb.from('gastos').update({ recurrente_activa: false, fecha_fin_recurrencia: mesActual }).eq('id', id);
+    if (error) { showToast(error.message, 'error'); return; }
+    const idx = db.gastos.findIndex(x => x.id === id);
+    if (idx !== -1) { db.gastos[idx].recurrente_activa = false; db.gastos[idx].fecha_fin_recurrencia = mesActual; }
+    renderRecurrentes();
+    showToast('Dado de baja ✓');
+  });
+}
+
+// ============================================================
+// LISTA DE COMPRAS
+// ============================================================
+
+let _currentComprasMes = null;
+
+function initComprasMesSelect() {
+  const selCarga = document.getElementById('ci-mes');
+  const selFiltro = document.getElementById('ci-filter-mes');
+  if (!selCarga || !selFiltro) return;
+  const { month, year } = currentYM();
+  const opts = [];
+  for (let k = -2; k <= 4; k++) {
+    let m = month + k, y = year;
+    while (m < 0) { m += 12; y--; }
+    while (m > 11) { m -= 12; y++; }
+    const val = `${y}-${String(m + 1).padStart(2, '0')}`;
+    const label = `${MONTHS[m]} ${y}`;
+    opts.push({ val, label, selected: k === 0 });
+  }
+  selCarga.innerHTML = opts.map(o => `<option value="${o.val}" ${o.selected ? 'selected' : ''}>${o.label}</option>`).join('');
+  selFiltro.innerHTML = '<option value="">Todos los meses</option>' + opts.map(o => `<option value="${o.val}" ${o.selected ? 'selected' : ''}>${o.label}</option>`).join('');
+}
+
+function initComprasTemaSelect() {
+  const el = document.getElementById('ci-tema');
+  const elFilter = document.getElementById('ci-filter-tema');
+  if (!el) return;
+  const temas = ['General', ...db.comprasTemas.map(t => t.nombre)];
+  el.innerHTML = temas.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (elFilter) elFilter.innerHTML = '<option value="">Todos los temas</option>' + temas.map(t => `<option value="${t}">${t}</option>`).join('');
+}
+
+async function addCompraItem() {
+  const nombre = document.getElementById('ci-nombre')?.value.trim() || '';
+  const tema = document.getElementById('ci-tema')?.value || 'General';
+  const cantidad = parseInt(document.getElementById('ci-cantidad')?.value) || 1;
+  const precio = parseFloat(document.getElementById('ci-precio')?.value) || null;
+  const notas = document.getElementById('ci-notas')?.value.trim() || '';
+  const mes = document.getElementById('ci-mes')?.value || new Date().toISOString().slice(0, 7);
+  if (!nombre) { showToast('Ingresá el nombre del ítem', 'error'); return; }
+  setBtnLoading('btn-add-compra', true);
+  const { data, error } = await sb.from('compras_items').insert({
+    user_id: currentUser.id, nombre, tema, cantidad, precio_estimado: precio, notas, mes_referencia: mes, comprado: false
+  }).select().single();
+  setBtnLoading('btn-add-compra', false);
+  if (error) { showToast(error.message, 'error'); return; }
+  db.comprasItems.unshift(data);
+  clearCompraForm();
+  renderCompras();
+  showToast('Ítem agregado ✓');
+}
+
+function clearCompraForm() {
+  document.getElementById('ci-nombre').value = '';
+  document.getElementById('ci-precio').value = '';
+  document.getElementById('ci-notas').value = '';
+  document.getElementById('ci-cantidad').value = '1';
+}
+
+async function marcarComprado(id, comprado) {
+  const item = db.comprasItems.find(x => x.id === id);
+  if (!item) return;
+  // Si se marca comprado, pedir precio real si no hay
+  let precioReal = item.precio_real;
+  if (comprado && !precioReal) {
+    const input = prompt(`¿Cuánto pagaste por "${item.nombre}"? (opcional, Enter para omitir)`);
+    precioReal = input && !isNaN(parseFloat(input)) ? parseFloat(input) : null;
+  }
+  const update = { comprado, fecha_compra: comprado ? new Date().toISOString().slice(0, 10) : null };
+  if (precioReal !== undefined) update.precio_real = precioReal;
+  const { error } = await sb.from('compras_items').update(update).eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  Object.assign(item, update);
+  renderCompras();
+  if (comprado) showToast('✓ Comprado');
+}
+
+async function deleteCompraItem(id) {
+  const item = db.comprasItems.find(x => x.id === id);
+  if (!item) return;
+  confirmarEliminar(item.nombre, 'Se eliminará este ítem de la lista.', async () => {
+    const { error } = await sb.from('compras_items').delete().eq('id', id);
+    if (error) { showToast(error.message, 'error'); return; }
+    db.comprasItems = db.comprasItems.filter(x => x.id !== id);
+    renderCompras();
+    showToast('Eliminado');
+  });
+}
+
+async function updatePrecioCompra(id, precio) {
+  const p = parseFloat(precio);
+  if (isNaN(p)) return;
+  const { error } = await sb.from('compras_items').update({ precio_real: p }).eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  const item = db.comprasItems.find(x => x.id === id);
+  if (item) item.precio_real = p;
+  showToast('Precio actualizado ✓');
+}
+
+function renderCompras() {
+  initComprasMesSelect();
+  initComprasTemaSelect();
+  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
+  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
+  const soloPendientes = document.getElementById('ci-filter-pendientes')?.checked || false;
+
+  let items = db.comprasItems;
+  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
+  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
+  if (soloPendientes) items = items.filter(x => !x.comprado);
+
+  const pendientes = items.filter(x => !x.comprado).length;
+  const comprados = items.filter(x => x.comprado).length;
+  const totalEstimado = items.filter(x => x.precio_estimado).reduce((s, x) => s + (x.precio_estimado * x.cantidad), 0);
+  const totalReal = items.filter(x => x.precio_real).reduce((s, x) => s + (x.precio_real * x.cantidad), 0);
+
+  document.getElementById('compras-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Pendientes</div><div class="card-value" style="color:var(--warn)">${pendientes}</div></div>
+    <div class="card"><div class="card-title">Comprados</div><div class="card-value" style="color:var(--green)">${comprados}</div></div>
+    <div class="card"><div class="card-title">Gasto real</div><div class="card-value amount-negative">${totalReal > 0 ? fmtARS(totalReal) : '—'}</div><div class="card-sub">${totalEstimado > 0 ? `Estimado: ${fmtARS(totalEstimado)}` : ''}</div></div>`;
+
+  // Agrupar por tema
+  const porTema = {};
+  items.forEach(x => {
+    const t = x.tema || 'General';
+    if (!porTema[t]) porTema[t] = [];
+    porTema[t].push(x);
+  });
+
+  const container = document.getElementById('compras-lista-container');
+  if (items.length === 0) { container.innerHTML = '<div class="empty-state">No hay ítems en la lista</div>'; return; }
+
+  container.innerHTML = Object.entries(porTema).map(([tema, tItems]) => {
+    const rows = tItems.map(x => `
+      <tr>
+        <td>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" ${x.comprado ? 'checked' : ''} onchange="marcarComprado('${x.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent2)">
+            <span style="${x.comprado ? 'text-decoration:line-through;color:var(--muted)' : 'font-weight:500'}">${x.nombre}</span>
+          </label>
+          ${x.notas ? `<div style="font-size:11px;color:var(--muted);margin-left:24px">${x.notas}</div>` : ''}
+        </td>
+        <td style="color:var(--muted)">${x.cantidad > 1 ? `x${x.cantidad}` : '—'}</td>
+        <td style="color:var(--muted);font-size:12px">${x.precio_estimado ? fmtARS(x.precio_estimado * x.cantidad) : '—'}</td>
+        <td>
+          <input type="number" value="${x.precio_real || ''}" placeholder="—" min="0"
+            onblur="updatePrecioCompra('${x.id}', this.value)"
+            style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;outline:none">
+        </td>
+        <td style="color:var(--muted);font-size:12px">${x.fecha_compra || '—'}</td>
+        <td><button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button></td>
+      </tr>`).join('');
+
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:12px;font-size:15px">🏷️ ${tema}</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Ítem</th><th>Cant.</th><th>Est.</th><th>Precio real</th><th>Fecha</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+  }).join('');
+}
+
+function renderComprasHistorial() {
+  // Agrupar ítems por nombre, mostrar evolución de precios
+  const conPrecio = db.comprasItems.filter(x => x.precio_real && x.mes_referencia);
+  const porNombre = {};
+  conPrecio.forEach(x => {
+    if (!porNombre[x.nombre]) porNombre[x.nombre] = [];
+    porNombre[x.nombre].push({ mes: x.mes_referencia, precio: x.precio_real, cantidad: x.cantidad });
+  });
+
+  const container = document.getElementById('compras-historial-container');
+  if (Object.keys(porNombre).length === 0) {
+    container.innerHTML = '<div class="empty-state">Aún no hay precios registrados. Completá el campo "Precio real" al comprar ítems.</div>';
+    return;
+  }
+
+  container.innerHTML = Object.entries(porNombre).map(([nombre, registros]) => {
+    registros.sort((a, b) => a.mes.localeCompare(b.mes));
+    const ultimo = registros[registros.length - 1];
+    const primero = registros[0];
+    const variacion = registros.length > 1 ? ((ultimo.precio - primero.precio) / primero.precio * 100).toFixed(1) : null;
+    const filas = registros.map(r => `
+      <tr>
+        <td style="color:var(--muted)">${r.mes}</td>
+        <td style="font-weight:600">${fmtARS(r.precio)}</td>
+        <td style="color:var(--muted)">${r.cantidad > 1 ? `x${r.cantidad} = ${fmtARS(r.precio * r.cantidad)}` : '—'}</td>
+      </tr>`).join('');
+
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-weight:600">${nombre}</span>
+        ${variacion !== null ? `<span style="font-size:12px;color:${parseFloat(variacion)>0?'var(--red)':'var(--green)'}">
+          ${parseFloat(variacion)>0?'▲':'▼'} ${Math.abs(variacion)}% vs. inicio
+        </span>` : ''}
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Mes</th><th>Precio unitario</th><th>Total</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>
+    </div>`;
+  }).join('');
+}
+
+async function addTema() {
+  const nombre = document.getElementById('new-tema-nombre')?.value.trim() || '';
+  if (!nombre) { showToast('Ingresá el nombre del tema', 'error'); return; }
+  if (db.comprasTemas.find(t => t.nombre === nombre)) { showToast('Ese tema ya existe', 'error'); return; }
+  const { data, error } = await sb.from('compras_temas').insert({ user_id: currentUser.id, nombre }).select().single();
+  if (error) { showToast(error.message, 'error'); return; }
+  db.comprasTemas.push(data);
+  document.getElementById('new-tema-nombre').value = '';
+  initComprasTemaSelect();
+  renderComprasTemas();
+  showToast('Tema agregado ✓');
+}
+
+async function deleteTema(id) {
+  const t = db.comprasTemas.find(x => x.id === id);
+  if (!t) return;
+  confirmarEliminar(t.nombre, 'Se eliminará el tema (los ítems quedan en "General").', async () => {
+    const { error } = await sb.from('compras_temas').delete().eq('id', id);
+    if (error) { showToast(error.message, 'error'); return; }
+    db.comprasTemas = db.comprasTemas.filter(x => x.id !== id);
+    renderComprasTemas();
+    initComprasTemaSelect();
+    showToast('Tema eliminado');
+  });
+}
+
+function renderComprasTemas() {
+  const temasList = document.getElementById('temas-list');
+  if (temasList) {
+    const temas = db.comprasTemas;
+    temasList.innerHTML = temas.length === 0
+      ? '<div class="empty-state" style="padding:16px">No hay temas personalizados</div>'
+      : temas.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:1">${t.nombre}</span>
+          <button class="del-btn" onclick="deleteTema('${t.id}')">🗑</button>
+        </div>`).join('');
+  }
+
+  // Resumen por tema
+  const container = document.getElementById('compras-temas-container');
+  if (!container) return;
+  const temas = ['General', ...db.comprasTemas.map(t => t.nombre)];
+  container.innerHTML = temas.map(tema => {
+    const items = db.comprasItems.filter(x => x.tema === tema);
+    const pendientes = items.filter(x => !x.comprado).length;
+    const totalReal = items.filter(x => x.precio_real).reduce((s, x) => s + x.precio_real * x.cantidad, 0);
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-weight:600">🏷️ ${tema}</span> <span style="color:var(--muted);font-size:13px">${items.length} ítem${items.length!==1?'s':''}</span></div>
+        <div style="text-align:right">
+          ${pendientes > 0 ? `<div style="color:var(--warn);font-size:13px">${pendientes} pendiente${pendientes!==1?'s':''}</div>` : ''}
+          ${totalReal > 0 ? `<div style="color:var(--green);font-size:13px">${fmtARS(totalReal)} gastados</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 
 init();
 </script>
