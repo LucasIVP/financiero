@@ -1097,16 +1097,27 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
         <span id="fc-total" style="font-size:20px;font-weight:700;color:var(--accent2)">$0</span>
       </div>
       <div class="form-grid" style="grid-template-columns:1fr 1fr">
-        <div class="form-group"><label>Fecha del gasto</label><input type="date" id="fc-fecha"></div>
+        <div class="form-group"><label>Fecha de compra <span style="font-size:10px;color:var(--muted);font-weight:400">(referencia)</span></label><input type="date" id="fc-fecha"></div>
         <div class="form-group"><label>Descripción</label><input type="text" id="fc-desc" placeholder="Ej: Supermercado semanal"></div>
         <div class="form-group"><label>Categoría</label><select id="fc-cat"></select></div>
         <div class="form-group"><label>Medio de pago</label>
-          <select id="fc-medio">
+          <select id="fc-medio" onchange="toggleFcCredito()">
             <option value="efectivo">Efectivo</option>
             <option value="debito">Débito</option>
             <option value="credito">Crédito</option>
             <option value="transferencia">Transferencia</option>
           </select>
+        </div>
+        <div class="form-group" id="fc-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="fc-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
+        <div class="form-group" id="fc-acreditacion-field" style="display:none;grid-column:1/-1">
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px">
+            <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 ¿Cuándo se acredita?</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+              <div class="form-group"><label>Cuotas</label><input type="number" id="fc-ncuotas" value="1" min="1" max="60"></div>
+              <div class="form-group"><label>Mes de acreditación</label><select id="fc-acred-mes"></select></div>
+              <div class="form-group"><label>Año</label><select id="fc-acred-anio"></select></div>
+            </div>
+          </div>
         </div>
         <div class="form-group" style="grid-column:1/-1">
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
@@ -4166,11 +4177,45 @@ function finalizarCompra() {
   // Categorías
   const catSel = document.getElementById('fc-cat');
   catSel.innerHTML = db.categorias.map(c => `<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');
-  // Preseleccionar "Supermercado" o similar si existe
   const superCat = db.categorias.find(c => /super|aliment|comida|mercado/i.test(c.name));
   if (superCat) catSel.value = superCat.name;
 
+  // Tarjetas
+  const tarjetaSel = document.getElementById('fc-tarjeta-id');
+  if (tarjetaSel) {
+    tarjetaSel.innerHTML = '<option value="">— Sin asignar —</option>' + db.tarjetas.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  }
+
+  // Pre-seleccionar crédito y mostrar campos si corresponde
+  const medioSel = document.getElementById('fc-medio');
+  if (medioSel) { medioSel.value = 'credito'; toggleFcCredito(); }
+
   openModal('modal-finalizar-compra');
+}
+
+function toggleFcCredito() {
+  const medio = document.getElementById('fc-medio')?.value;
+  const isCredito = medio === 'credito';
+  const tarjetaField = document.getElementById('fc-tarjeta-field');
+  const acredField = document.getElementById('fc-acreditacion-field');
+  if (tarjetaField) tarjetaField.style.display = isCredito ? '' : 'none';
+  if (acredField) acredField.style.display = isCredito ? '' : 'none';
+  if (isCredito) fillFcAcredMes();
+}
+
+function fillFcAcredMes() {
+  const mesEl = document.getElementById('fc-acred-mes');
+  const anioEl = document.getElementById('fc-acred-anio');
+  if (!mesEl || !anioEl) return;
+  const hoy = new Date();
+  // Default: mes siguiente (cuando suele acreditarse la TC)
+  let mesNext = hoy.getMonth() + 1;
+  let anioNext = hoy.getFullYear();
+  if (mesNext > 11) { mesNext = 0; anioNext++; }
+  mesEl.innerHTML = MONTHS.map((m, i) => `<option value="${i}" ${i === mesNext ? 'selected' : ''}>${m}</option>`).join('');
+  const years = [];
+  for (let y = hoy.getFullYear(); y <= hoy.getFullYear() + 2; y++) years.push(y);
+  anioEl.innerHTML = years.map(y => `<option value="${y}" ${y === anioNext ? 'selected' : ''}>${y}</option>`).join('');
 }
 
 async function confirmarFinalizarCompra() {
@@ -4179,6 +4224,11 @@ async function confirmarFinalizarCompra() {
   const cat = document.getElementById('fc-cat').value;
   const medio = document.getElementById('fc-medio').value;
   const esCompartido = document.getElementById('fc-compartido')?.checked || false;
+  const tarjetaId = document.getElementById('fc-tarjeta-id')?.value || null;
+  const isCredito = medio === 'credito';
+  const ncuotas = isCredito ? (parseInt(document.getElementById('fc-ncuotas')?.value) || 1) : 1;
+  const acredMes = isCredito ? parseInt(document.getElementById('fc-acred-mes')?.value) : null;
+  const acredAnio = isCredito ? parseInt(document.getElementById('fc-acred-anio')?.value) : null;
   const total = parseFloat(document.getElementById('fc-total').textContent.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
   const montoNum = (() => {
     const raw = document.getElementById('fc-total').textContent;
@@ -4186,12 +4236,32 @@ async function confirmarFinalizarCompra() {
   })();
   if (!fecha || !desc || isNaN(montoNum) || montoNum <= 0) { showToast('Completá todos los campos', 'error'); return; }
   setBtnLoading('btn-confirmar-compra', true);
-  const { error } = await sb.from('gastos').insert({
-    user_id: currentUser.id, fecha, descripcion: desc, monto: montoNum, moneda: 'ARS',
-    cat, tipo: 'regular', medio, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras'
-  });
-  setBtnLoading('btn-confirmar-compra', false);
-  if (error) { showToast(error.message, 'error'); return; }
+  // Si es crédito con cuotas, insertar como plan de cuotas; si es 1 cuota, insertar gasto simple
+  if (isCredito && ncuotas > 1 && acredMes !== null && acredAnio !== null) {
+    const planId = generatePlanId();
+    const montoCuota = Math.round(montoNum / ncuotas);
+    const cuotas = [];
+    for (let i = 0; i < ncuotas; i++) {
+      let m = acredMes + i, y = acredAnio;
+      while (m > 11) { m -= 12; y++; }
+      const fechaCuota = `${y}-${String(m + 1).padStart(2, '0')}-${String(new Date(fecha).getDate()).padStart(2, '0')}`;
+      cuotas.push({ user_id: currentUser.id, fecha: fechaCuota, descripcion: `${desc} (${i+1}/${ncuotas})`, monto: montoCuota, moneda: 'ARS', cat, tipo: 'cuota', medio, tarjeta_id: tarjetaId || null, plan_id: planId, cuota_num: i+1, total_cuotas: ncuotas, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras' });
+    }
+    const { error } = await sb.from('gastos').insert(cuotas);
+    setBtnLoading('btn-confirmar-compra', false);
+    if (error) { showToast(error.message, 'error'); return; }
+  } else {
+    // 1 cuota o pago simple: insertar fecha de acreditación como fecha del gasto si es crédito
+    const fechaGasto = (isCredito && acredMes !== null && acredAnio !== null)
+      ? `${acredAnio}-${String(acredMes + 1).padStart(2, '0')}-${String(new Date(fecha).getDate()).padStart(2, '0')}`
+      : fecha;
+    const { error } = await sb.from('gastos').insert({
+      user_id: currentUser.id, fecha: fechaGasto, descripcion: desc, monto: montoNum, moneda: 'ARS',
+      cat, tipo: 'regular', medio, tarjeta_id: tarjetaId || null, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras'
+    });
+    setBtnLoading('btn-confirmar-compra', false);
+    if (error) { showToast(error.message, 'error'); return; }
+  }
   await refreshGastosCompleto();
   closeModal('modal-finalizar-compra');
   showToast('Gasto registrado ✓');
