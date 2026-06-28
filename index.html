@@ -1337,10 +1337,9 @@ function toggleRecurrenteOpts(prefix) {
   if (opts) opts.style.display = cb?.checked ? 'block' : 'none';
 }
 
-// Obtener suscripciones (gastos recurrentes): el gasto base tiene recurrente=true
+// Obtener suscripciones (solo para el tab 🔁 Suscripciones)
 function getSuscripciones() {
   const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones' && g.user_id === currentUser.id);
-  // Si tiene plan_id, usar solo la primera cuota como representante
   const vistos = new Set();
   return todos.filter(g => {
     const key = g.plan_id || g.id;
@@ -1350,7 +1349,19 @@ function getSuscripciones() {
   }).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
-// ¿Una suscripción está activa en un mes/año dado?
+// Obtener TODOS los gastos recurrentes del usuario (cualquier categoría, tipo Regular)
+function getTodosRecurrentes() {
+  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.user_id === currentUser.id);
+  const vistos = new Set();
+  return todos.filter(g => {
+    const key = g.plan_id || g.id;
+    if (vistos.has(key)) return false;
+    vistos.add(key);
+    return true;
+  }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+// ¿Un recurrente está activo en un mes/año dado?
 function suscripcionActivaEnMes(g, month, year) {
   if (!g.recurrente) return false;
   const inicio = new Date(g.fecha + 'T12:00:00');
@@ -1364,25 +1375,21 @@ function suscripcionActivaEnMes(g, month, year) {
   return true;
 }
 
-// Inyectar gastos virtuales de suscripciones Y recurrentes Casa en la lista de un mes
+// Inyectar gastos virtuales recurrentes (cualquier categoría) en la lista de un mes
 function getGastosConSuscripciones(month, year) {
   const ymStr = `${year}-${String(month+1).padStart(2,'0')}`;
   const reales = filterByMonth(db.gastos, month, year);
-  // IDs y plan_ids de suscripciones que ya tienen entrada real en este mes
   const planIdsReales = new Set(reales.filter(g => g.plan_id && g.recurrente).map(g => g.plan_id));
   const idsReales = new Set(reales.filter(g => !g.plan_id && g.recurrente).map(g => g.id));
-  // Suscripciones activas sin entrada real en este mes
-  const virtualesSus = getSuscripciones()
+  // Todos los recurrentes activos sin entrada real este mes
+  const virtuales = getTodosRecurrentes()
     .filter(g => {
       if (!suscripcionActivaEnMes(g, month, year)) return false;
       if (g.plan_id) return !planIdsReales.has(g.plan_id);
       return !idsReales.has(g.id);
     })
     .map(g => ({ ...g, _virtual: true, fecha: `${ymStr}-01` }));
-  // Recurrentes Casa activos sin entrada real en este mes (se agregan al final para no romper el flujo)
-  // Nota: getGastosConRecurrentesCasa está definida más adelante pero JS la hoistea igualmente vía function declarations
-  const virtualesCasa = getGastosConRecurrentesCasa(month, year, reales);
-  return [...reales, ...virtualesSus, ...virtualesCasa];
+  return [...reales, ...virtuales];
 }
 
 function renderSuscripciones() {
@@ -2763,11 +2770,18 @@ function renderCompartido() {
     elProp.textContent = 'No se encontraron ingresos declarados. Cargá ingresos en la pestaña Ingresos.';
   }
 
-  // Gastos compartidos del mes
-  const gastosMes = dbCompartido.gastos.filter(g => {
+  // Gastos compartidos del mes: reales de BD + virtuales recurrentes compartidos
+  const gastosRealesBD = dbCompartido.gastos.filter(g => {
     const d = new Date(g.fecha + 'T12:00:00');
     return d.getMonth() === month && d.getFullYear() === year;
   });
+  // Inyectar virtuales recurrentes compartidos (ej. Alquiler) que no tengan entrada real este mes
+  const ymStr = `${year}-${String(month+1).padStart(2,'0')}`;
+  const idsRealesBD = new Set(gastosRealesBD.map(g => g.id));
+  const planIdsRealesBD = new Set(gastosRealesBD.filter(g => g.plan_id).map(g => g.plan_id));
+  const virtualesCompartidos = getGastosConSuscripciones(month, year)
+    .filter(g => g._virtual && g.es_compartido && !idsRealesBD.has(g.id) && (!g.plan_id || !planIdsRealesBD.has(g.plan_id)));
+  const gastosMes = [...gastosRealesBD, ...virtualesCompartidos];
 
   const totalComp = gastosMes.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
 
@@ -3532,43 +3546,21 @@ async function deleteSubcategoria(id) {
 }
 
 // ============================================================
-// RECURRENTES CASA (gastos recurrentes no-Suscripciones)
+// RECURRENTES (tab 🏡 — todos los recurrentes no-Suscripciones)
 // ============================================================
 
 function getRecurrentesCasa() {
-  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.user_id === currentUser.id);
-  const vistos = new Set();
-  return todos.filter(g => {
-    const key = g.plan_id || g.id;
-    if (vistos.has(key)) return false;
-    vistos.add(key);
-    return true;
-  }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  // Devuelve todos los recurrentes excepto Suscripciones (para el tab 🏡)
+  return getTodosRecurrentes().filter(g => g.cat !== 'Suscripciones');
 }
 
 function recurrenteCasaActivaEnMes(g, month, year) {
-  if (!g.recurrente) return false;
-  const inicio = new Date(g.fecha + 'T12:00:00');
-  const mesGasto = new Date(year, month, 1);
-  if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
-  if (g.fecha_fin_recurrencia) {
-    const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
-    if (mesGasto >= fin) return false;
-  }
-  if (g.recurrente_activa === false) return false;
-  return true;
+  return suscripcionActivaEnMes(g, month, year); // misma lógica, reutilizar
 }
 
-// Inyectar virtuales de recurrentes Casa en lista de gastos del mes
+// Kept for compatibility — ya no se usa en getGastosConSuscripciones pero puede llamarse desde otros lugares
 function getGastosConRecurrentesCasa(month, year, gastosBase) {
-  const ymStr = `${year}-${String(month + 1).padStart(2, '0')}`;
-  const reales = gastosBase || filterByMonth(db.gastos, month, year);
-  const idsReales = new Set(reales.filter(g => g.recurrente).map(g => g.id));
-  const recurrentes = getRecurrentesCasa();
-  const virtuales = recurrentes
-    .filter(g => recurrenteCasaActivaEnMes(g, month, year) && !idsReales.has(g.id))
-    .map(g => ({ ...g, _virtual: true, _tipo_rec: 'casa', fecha: `${ymStr}-01` }));
-  return virtuales;
+  return []; // la inyección ahora la hace getGastosConSuscripciones directamente
 }
 
 function renderRecurrentes() {
