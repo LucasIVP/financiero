@@ -3435,6 +3435,8 @@ function renderPrestamos() {
 
   lista.innerHTML = Object.entries(porPersona).map(([persona, items]) => {
     const tarjetaNombre = (tarjetaId) => db.tarjetas.find(t => t.id === tarjetaId)?.nombre || '—';
+    const totalPersona = items.reduce((s, { pendientes }) =>
+      s + pendientes.reduce((s2, c) => s2 + toARS(c.monto, c.moneda), 0), 0);
     const itemsHTML = items.map(({ prestamo, cuotas, pendientes }) => {
       const cobradas = cuotas.filter(c => c.cobrada).length;
       const pct = Math.round(cobradas / cuotas.length * 100);
@@ -3480,8 +3482,14 @@ function renderPrestamos() {
     }).join('');
 
     return `<div class="card" style="margin-bottom:20px">
-      <div style="font-weight:700;font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        <span style="font-size:20px">👤</span> ${persona}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">👤</span> ${persona}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--muted)">Le debe a Lucas</div>
+          <div style="font-weight:700;font-size:16px;color:var(--accent)">${fmtARS(totalPersona)}</div>
+        </div>
       </div>
       ${itemsHTML}
     </div>`;
