@@ -1113,9 +1113,20 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
 
 <div class="modal-overlay" id="modal-edit-grupal">
   <div class="modal">
-    <div class="modal-header"><span class="modal-title">✏️ Editar participantes</span><button class="modal-close" onclick="closeModal('modal-edit-grupal')">×</button></div>
+    <div class="modal-header"><span class="modal-title">✏️ Editar gasto grupal</span><button class="modal-close" onclick="closeModal('modal-edit-grupal')">×</button></div>
     <input type="hidden" id="eg-grupal-id">
-    <div id="eg-grupal-info" style="margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px"></div>
+    <div style="font-weight:600;font-size:13px;margin-bottom:8px">Datos del gasto</div>
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-bottom:14px">
+      <input type="text" id="eg-descripcion" placeholder="Descripción" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+      <input type="number" id="eg-monto" placeholder="Monto" style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+      <select id="eg-moneda" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+        <option value="ARS">ARS</option>
+        <option value="USD">USD</option>
+      </select>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <button class="btn btn-primary" style="padding:6px 16px;font-size:13px" onclick="guardarDatosGrupal()">Guardar cambios</button>
+    </div>
     <div style="font-weight:600;font-size:13px;margin-bottom:10px">Participantes actuales</div>
     <div id="eg-grupal-lista" style="margin-bottom:16px"></div>
     <div style="font-weight:600;font-size:13px;margin-bottom:10px">Agregar participante</div>
@@ -3251,9 +3262,37 @@ function abrirEditGrupal(grupalId) {
   const g = dbCompartido.grupales.find(x => x.id === grupalId);
   if (!g) return;
   document.getElementById('eg-grupal-id').value = grupalId;
-  document.getElementById('eg-grupal-info').innerHTML = `<strong>${g.descripcion}</strong> · ${g.moneda==='USD'?fmtUSD(g.monto):fmtARS(g.monto)} · ${g.fecha}`;
+  document.getElementById('eg-descripcion').value = g.descripcion || '';
+  document.getElementById('eg-monto').value = g.monto || '';
+  document.getElementById('eg-moneda').value = g.moneda || 'ARS';
   renderEditGrupalLista(grupalId);
   openModal('modal-edit-grupal');
+}
+
+async function guardarDatosGrupal() {
+  const grupalId = document.getElementById('eg-grupal-id').value;
+  const descripcion = document.getElementById('eg-descripcion').value.trim();
+  const monto = parseFloat(document.getElementById('eg-monto').value);
+  const moneda = document.getElementById('eg-moneda').value;
+  if (!descripcion || isNaN(monto) || monto <= 0) { showToast('Completá descripción y monto', 'error'); return; }
+
+  const { error } = await sb.from('gastos_grupales').update({ descripcion, monto, moneda }).eq('id', grupalId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+
+  // Recalcular monto_parte de cada participante con el nuevo monto total
+  const parts = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id === grupalId);
+  const parteMonto = Math.round(monto / parts.length * 100) / 100;
+  await Promise.all(parts.map(p =>
+    sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto, moneda }).eq('id', p.id)
+  ));
+  parts.forEach(p => { p.monto_parte = parteMonto; p.moneda = moneda; });
+
+  const g = dbCompartido.grupales.find(x => x.id === grupalId);
+  if (g) { g.descripcion = descripcion; g.monto = monto; g.moneda = moneda; }
+
+  renderEditGrupalLista(grupalId);
+  renderGrupales();
+  showToast('Gasto actualizado ✓');
 }
 
 function renderEditGrupalLista(grupalId) {
@@ -3467,30 +3506,55 @@ function renderGrupales() {
     lista.innerHTML = '<div class="empty-state">No hay gastos grupales registrados</div>'; return;
   }
 
-  // Resumen por persona: sumar pendientes de cobro/pago agrupado por nombre
+  // Resumen por persona: total + desglose por mes (para casos con cuotas en meses distintos)
   const porPersona = {};
   partsAll.filter(p => !p.es_yo && !p.pagado).forEach(p => {
-    const key = p.nombre;
-    if (!porPersona[key]) porPersona[key] = { meDeben: 0, leDebo: 0 };
+    const g = grupales.find(gg => gg.id === p.gasto_grupal_id);
+    const ym = g ? g.fecha.slice(0, 7) : '?';
+    const [y, m] = ym.split('-');
+    const mesLabel = ym !== '?' ? `${MONTHS[parseInt(m)-1]} ${y}` : '?';
+    if (!porPersona[p.nombre]) porPersona[p.nombre] = { meDeben: 0, leDebo: 0, meses: {} };
     const monto = toARS(p.monto_parte, p.moneda);
-    if (p.rol === 'me_debe') porPersona[key].meDeben += monto;
-    else porPersona[key].leDebo += monto;
+    if (p.rol === 'me_debe') {
+      porPersona[p.nombre].meDeben += monto;
+      if (!porPersona[p.nombre].meses[mesLabel]) porPersona[p.nombre].meses[mesLabel] = { meDeben: 0, leDebo: 0 };
+      porPersona[p.nombre].meses[mesLabel].meDeben += monto;
+    } else {
+      porPersona[p.nombre].leDebo += monto;
+      if (!porPersona[p.nombre].meses[mesLabel]) porPersona[p.nombre].meses[mesLabel] = { meDeben: 0, leDebo: 0 };
+      porPersona[p.nombre].meses[mesLabel].leDebo += monto;
+    }
   });
   const personasConSaldo = Object.entries(porPersona).filter(([,v]) => v.meDeben > 0 || v.leDebo > 0);
 
   const resumenHTML = personasConSaldo.length > 0 ? `
     <div class="card" style="margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:12px">👥 Saldo pendiente por persona</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;flex-direction:column;gap:10px">
         ${personasConSaldo.map(([nombre, v]) => {
           const neto = v.meDeben - v.leDebo;
-          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid ${neto>=0?'var(--green)':'var(--warn)'}">
-            <span style="font-weight:600">${nombre}</span>
-            <div style="text-align:right;display:flex;flex-direction:column;gap:2px;align-items:flex-end">
-              ${v.meDeben>0?`<span style="font-size:12px;color:var(--green)">Me debe: ${fmtARS(v.meDeben)}</span>`:''}
-              ${v.leDebo>0?`<span style="font-size:12px;color:var(--warn)">Le debo: ${fmtARS(v.leDebo)}</span>`:''}
-              <span style="font-weight:700;font-size:14px;color:${neto>=0?'var(--green)':'var(--warn)'}">Neto: ${neto>=0?'+':''}${fmtARS(neto)}</span>
+          const mesesEntries = Object.entries(v.meses).sort(([a],[b]) => a.localeCompare(b));
+          const tieneVariosMeses = mesesEntries.length > 1;
+          const desgloseHTML = tieneVariosMeses
+            ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+                ${mesesEntries.map(([mes, mv]) => {
+                  const netoMes = mv.meDeben - mv.leDebo;
+                  return `<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);padding:3px 8px;background:var(--bg);border-radius:6px">
+                    <span>${mes}</span>
+                    <span style="color:${netoMes>=0?'var(--green)':'var(--warn)'};font-weight:600">${netoMes>=0?'+':''}${fmtARS(netoMes)}</span>
+                  </div>`;
+                }).join('')}
+              </div>` : '';
+          return `<div style="padding:10px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid ${neto>=0?'var(--green)':'var(--warn)'}">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-weight:600">${nombre}</span>
+              <div style="text-align:right;display:flex;flex-direction:column;gap:2px;align-items:flex-end">
+                ${v.meDeben>0?`<span style="font-size:12px;color:var(--green)">Me debe: ${fmtARS(v.meDeben)}</span>`:''}
+                ${v.leDebo>0?`<span style="font-size:12px;color:var(--warn)">Le debo: ${fmtARS(v.leDebo)}</span>`:''}
+                <span style="font-weight:700;font-size:14px;color:${neto>=0?'var(--green)':'var(--warn)'}">Total: ${neto>=0?'+':''}${fmtARS(neto)}</span>
+              </div>
             </div>
+            ${desgloseHTML}
           </div>`;
         }).join('')}
       </div>
