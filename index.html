@@ -300,6 +300,29 @@
       <div id="sus-empty" class="empty-state" style="display:none">No hay suscripciones cargadas. Agregá un gasto de categoría Suscripciones y marcalo como 🔁 recurrente.</div>
     </div>
   </div>
+
+  <!-- Tab: Recurrentes -->
+  <div id="gastos-gastos-recurrentes" class="inner-section">
+    <div class="card" style="margin-bottom:16px;background:rgba(0,212,170,0.06);border-color:rgba(0,212,170,0.3)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:20px">🏡</span>
+        <span style="font-weight:600;color:var(--accent2)">Gastos recurrentes</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted)">Gastos de categoría Casa y otros marcados como recurrentes. Se proyectan automáticamente en cada mes. Podés editarlos o darlos de baja.</div>
+    </div>
+    <div id="rec-kpis" class="grid-3" style="margin-bottom:20px"></div>
+    <div class="card">
+      <div class="section-header">
+        <span style="font-weight:600">Gastos recurrentes activos e inactivos</span>
+        <span id="rec-total-badge" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Medio</th><th>Estado</th><th>Inicio</th><th></th></tr></thead>
+        <tbody id="rec-table-body"></tbody></table>
+      </div>
+      <div id="rec-empty" class="empty-state" style="display:none">No hay gastos recurrentes. Cargá un gasto y marcalo como 🏡 recurrente.</div>
+    </div>
+  </div>
 </div>
 <div id="page-ingresos" class="page">
   <div class="section-header">
@@ -745,29 +768,6 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
 -- INSERT INTO parejas (user_a, user_b, email_a, email_b) VALUES
 --   ('UUID_LUCAS', 'UUID_NOVIA', 'email_lucas@...', 'email_novia@...');</pre>
       </details>
-    </div>
-  </div>
-</div>
-  <!-- Tab: Recurrentes -->
-  <div id="gastos-gastos-recurrentes" class="inner-section">
-    <div class="card" style="margin-bottom:16px;background:rgba(0,212,170,0.06);border-color:rgba(0,212,170,0.3)">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <span style="font-size:20px">🏡</span>
-        <span style="font-weight:600;color:var(--accent2)">Gastos recurrentes</span>
-      </div>
-      <div style="font-size:13px;color:var(--muted)">Gastos de categoría Casa y otros marcados como recurrentes. Se proyectan automáticamente en cada mes. Podés editarlos o darlos de baja.</div>
-    </div>
-    <div id="rec-kpis" class="grid-3" style="margin-bottom:20px"></div>
-    <div class="card">
-      <div class="section-header">
-        <span style="font-weight:600">Gastos recurrentes activos e inactivos</span>
-        <span id="rec-total-badge" style="font-size:13px;color:var(--muted)"></span>
-      </div>
-      <div class="table-wrap">
-        <table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Medio</th><th>Estado</th><th>Inicio</th><th></th></tr></thead>
-        <tbody id="rec-table-body"></tbody></table>
-      </div>
-      <div id="rec-empty" class="empty-state" style="display:none">No hay gastos recurrentes. Cargá un gasto y marcalo como 🏡 recurrente.</div>
     </div>
   </div>
 </div>
@@ -1225,6 +1225,7 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
       <button class="btn btn-primary" id="btn-confirmar-compra" onclick="confirmarFinalizarCompra()" style="background:var(--accent2);border-color:var(--accent2)">✅ Registrar en Gastos</button>
     </div>
   </div>
+</div>
 </div>
 
 <div id="toast-container"></div>
