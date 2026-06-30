@@ -584,6 +584,11 @@
       </div>
       <div id="subcat-list"></div>
     </div>
+    <div class="card" style="grid-column:1/-1">
+      <div style="font-weight:600;margin-bottom:14px">💑 Vínculo de pareja</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Vinculate con tu pareja para compartir gastos e ingresos en la sección Compartido. Cada quien sigue viendo solo sus propios datos salvo lo que marquen como compartido, y solo entre ustedes dos.</div>
+      <div id="pareja-config"></div>
+    </div>
     <div class="card">
       <div style="font-weight:600;margin-bottom:14px">Datos</div>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -646,12 +651,99 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS promo_extra numeric;
 ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS lugar text;
 ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT false;
 
--- RLS compartida: permite ver ítems de cualquier usuario si es_compartida = true
+-- RLS compartida: permite ver ítems de tu pareja vinculada si es_compartida = true
+-- (requiere la tabla parejas — ver sección "Vínculo de pareja" más abajo)
 -- Ejecutar en Supabase Dashboard > SQL Editor:
 -- DROP POLICY IF EXISTS "own compras_items" ON compras_items;
--- CREATE POLICY "compras_items_shared" ON compras_items FOR ALL
---   USING (auth.uid() = user_id OR es_compartida = true)
---   WITH CHECK (auth.uid() = user_id);</pre>
+-- DROP POLICY IF EXISTS "compras_items_shared" ON compras_items;
+-- CREATE POLICY "compras_items_select" ON compras_items FOR SELECT
+--   USING (auth.uid() = user_id OR (es_compartida = true AND EXISTS (
+--     SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = compras_items.user_id)
+--                                 OR (p.user_b = auth.uid() AND p.user_a = compras_items.user_id))));
+-- CREATE POLICY "compras_items_write" ON compras_items FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "compras_items_update" ON compras_items FOR UPDATE USING (auth.uid() = user_id);
+-- CREATE POLICY "compras_items_delete" ON compras_items FOR DELETE USING (auth.uid() = user_id);</pre>
+      </details>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">💑 SQL: Vínculo de pareja (ejecutar una sola vez)</summary>
+        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- 1) Tabla de vínculo confirmado
+CREATE TABLE parejas (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_a uuid REFERENCES auth.users NOT NULL,
+  user_b uuid REFERENCES auth.users NOT NULL,
+  email_a text,
+  email_b text,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE parejas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "parejas_select" ON parejas FOR SELECT
+  USING (auth.uid() = user_a OR auth.uid() = user_b);
+CREATE POLICY "parejas_insert" ON parejas FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_b
+    AND EXISTS (SELECT 1 FROM pareja_solicitudes s
+      WHERE s.from_user = parejas.user_a
+        AND lower(s.to_email) = lower(auth.jwt()->>'email')
+        AND s.estado = 'pendiente')
+  );
+CREATE POLICY "parejas_delete" ON parejas FOR DELETE
+  USING (auth.uid() = user_a OR auth.uid() = user_b);
+
+-- 2) Tabla de invitaciones por email
+CREATE TABLE pareja_solicitudes (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  from_user uuid REFERENCES auth.users NOT NULL,
+  from_email text,
+  to_email text NOT NULL,
+  estado text DEFAULT 'pendiente',
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE pareja_solicitudes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "solicitudes_select" ON pareja_solicitudes FOR SELECT
+  USING (auth.uid() = from_user OR lower(to_email) = lower(auth.jwt()->>'email'));
+CREATE POLICY "solicitudes_insert" ON pareja_solicitudes FOR INSERT
+  WITH CHECK (auth.uid() = from_user);
+CREATE POLICY "solicitudes_update" ON pareja_solicitudes FOR UPDATE
+  USING (auth.uid() = from_user OR lower(to_email) = lower(auth.jwt()->>'email'));
+CREATE POLICY "solicitudes_delete" ON pareja_solicitudes FOR DELETE
+  USING (auth.uid() = from_user);
+
+-- 3) Reemplazar políticas de gastos e ingresos: de "cualquier usuario" a "solo tu pareja vinculada"
+DO $$
+DECLARE pol record;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'gastos' LOOP
+    EXECUTE format('DROP POLICY %I ON gastos', pol.policyname);
+  END LOOP;
+  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'ingresos' LOOP
+    EXECUTE format('DROP POLICY %I ON ingresos', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "gastos_select" ON gastos FOR SELECT USING (
+  auth.uid() = user_id
+  OR (es_compartido = true AND EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = gastos.user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = gastos.user_id)))
+);
+CREATE POLICY "gastos_insert" ON gastos FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gastos_update" ON gastos FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "gastos_delete" ON gastos FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY "ingresos_select" ON ingresos FOR SELECT USING (
+  auth.uid() = user_id
+  OR EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = ingresos.user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = ingresos.user_id))
+);
+CREATE POLICY "ingresos_insert" ON ingresos FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "ingresos_update" ON ingresos FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_id);
+
+-- 4) Vincular retroactivamente tu cuenta actual con la de tu pareja (una sola vez)
+-- Buscá los UUID reales con: select id, email from auth.users;
+-- INSERT INTO parejas (user_a, user_b, email_a, email_b) VALUES
+--   ('UUID_LUCAS', 'UUID_NOVIA', 'email_lucas@...', 'email_novia@...');</pre>
       </details>
     </div>
   </div>
@@ -1153,6 +1245,7 @@ function emptyDB() {
     categorias:defaultCategories(),
     subcategorias:[],
     comprasItems:[],comprasTemas:[],
+    parejas:[],parejaSolicitudesEnviadas:[],parejaSolicitudesRecibidas:[],
     config:{dolar:1400,dolar_fecha:'',obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30}
   };
 }
@@ -1220,7 +1313,7 @@ async function loadAllData(){
   setLoading(true,'Cargando tus datos...');
   const uid=currentUser.id;
   try{
-    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc,subcat,citems,ctemas]=await Promise.all([
+    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc,subcat,citems,ctemas,par,solEnv,solRec]=await Promise.all([
       sb.from('gastos').select('*').or(`user_id.eq.${uid},es_compartido.eq.true`).order('fecha',{ascending:false}),
       sb.from('ingresos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('cuotas').select('*').eq('user_id',uid),
@@ -1236,6 +1329,9 @@ async function loadAllData(){
       sb.from('subcategorias').select('*').eq('user_id',uid).order('nombre'),
       sb.from('compras_items').select('*').or(`user_id.eq.${uid},es_compartida.eq.true`).order('created_at',{ascending:false}),
       sb.from('compras_temas').select('*').eq('user_id',uid).order('nombre'),
+      sb.from('parejas').select('*'),
+      sb.from('pareja_solicitudes').select('*').eq('from_user',uid).order('created_at',{ascending:false}),
+      sb.from('pareja_solicitudes').select('*').eq('to_email',(currentUser.email||'').toLowerCase()).order('created_at',{ascending:false}),
     ]);
     db.gastos=(g.data||[]).map(x=>({...x,desc:x.descripcion}));
     // Migrar tipos viejos al cargar
@@ -1262,6 +1358,9 @@ async function loadAllData(){
     db.subcategorias=subcat.data||[];
     db.comprasItems=citems.data||[];
     db.comprasTemas=ctemas.data||[];
+    db.parejas=par.data||[];
+    db.parejaSolicitudesEnviadas=(solEnv.data||[]).filter(s=>s.estado==='pendiente');
+    db.parejaSolicitudesRecibidas=(solRec.data||[]).filter(s=>s.estado==='pendiente');
     if(!cfg.data){
       const defaults={user_id:uid,dolar:1400,dolar_fecha:new Date().toISOString().slice(0,10),obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30};
       await sb.from('config').insert(defaults);db.config=defaults;
@@ -2485,6 +2584,113 @@ function renderConfig(){
   document.getElementById('cfg-obj-ahorro').value=cfg.obj_ahorro||'';
   document.getElementById('cfg-obj-regular').value=cfg.obj_regular||'';document.getElementById('cfg-obj-inusual').value=cfg.obj_inusual||'';
   document.getElementById('cat-list').innerHTML=db.categorias.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px">${c.emoji}</span><span style="flex:1;font-size:14px">${c.name}</span><button class="del-btn" title="Editar" onclick="abrirEditCat('${c.id}')">✏️</button><button class="del-btn" onclick="deleteCat('${c.id}')">🗑</button></div>`).join('');
+  renderParejaConfig();
+}
+
+function miParejaActual() {
+  const p = (db.parejas || []).find(p => p.user_a === currentUser.id || p.user_b === currentUser.id);
+  if (!p) return null;
+  return { id: p.id, partnerId: p.user_a === currentUser.id ? p.user_b : p.user_a, partnerEmail: p.user_a === currentUser.id ? p.email_b : p.email_a };
+}
+
+function renderParejaConfig() {
+  const el = document.getElementById('pareja-config');
+  if (!el) return;
+  const pareja = miParejaActual();
+
+  if (pareja) {
+    el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 14px;background:rgba(0,212,170,0.08);border-radius:10px;border-left:3px solid var(--green)">
+      <div><span style="font-weight:600">Vinculado con:</span> ${pareja.partnerEmail || 'tu pareja'}</div>
+      <button class="btn btn-danger" style="padding:6px 12px;font-size:13px" onclick="desvincularPareja('${pareja.id}')">Desvincular</button>
+    </div>`;
+    return;
+  }
+
+  const recibidas = db.parejaSolicitudesRecibidas || [];
+  const enviadas = db.parejaSolicitudesEnviadas || [];
+
+  let html = '';
+
+  if (recibidas.length > 0) {
+    html += `<div style="margin-bottom:14px">${recibidas.map(s => `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 14px;background:rgba(108,99,255,0.08);border-radius:10px;border-left:3px solid var(--accent);margin-bottom:8px">
+        <div><strong>${s.from_email || 'Alguien'}</strong> te invitó a vincularse como pareja</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" style="padding:6px 12px;font-size:13px" onclick="aceptarInvitacionPareja('${s.id}')">Aceptar</button>
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px" onclick="rechazarInvitacionPareja('${s.id}')">Rechazar</button>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
+  if (enviadas.length > 0) {
+    html += `<div style="margin-bottom:14px">${enviadas.map(s => `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 14px;background:var(--surface2);border-radius:10px;margin-bottom:8px">
+        <div style="color:var(--muted)">Invitación enviada a <strong style="color:var(--text)">${s.to_email}</strong> · pendiente</div>
+        <button class="del-btn" onclick="cancelarInvitacionPareja('${s.id}')">🗑</button>
+      </div>`).join('')}</div>`;
+  }
+
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="form-group" style="flex:1;min-width:220px"><label>Email de tu pareja</label><input type="email" id="pareja-email-input" placeholder="ejemplo@email.com" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;width:100%"></div>
+    <button class="btn btn-primary" onclick="enviarInvitacionPareja()">Invitar</button>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+async function enviarInvitacionPareja() {
+  const input = document.getElementById('pareja-email-input');
+  const email = (input?.value || '').trim().toLowerCase();
+  if (!email) { showToast('Escribí un email', 'error'); return; }
+  if (email === (currentUser.email || '').toLowerCase()) { showToast('No podés invitarte a vos mismo', 'error'); return; }
+  const { data, error } = await sb.from('pareja_solicitudes').insert({
+    from_user: currentUser.id, from_email: currentUser.email, to_email: email, estado: 'pendiente'
+  }).select().single();
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  db.parejaSolicitudesEnviadas.push(data);
+  input.value = '';
+  renderParejaConfig();
+  showToast('Invitación enviada ✓');
+}
+
+async function cancelarInvitacionPareja(id) {
+  const { error } = await sb.from('pareja_solicitudes').delete().eq('id', id);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  db.parejaSolicitudesEnviadas = db.parejaSolicitudesEnviadas.filter(s => s.id !== id);
+  renderParejaConfig();
+  showToast('Invitación cancelada');
+}
+
+async function rechazarInvitacionPareja(id) {
+  const { error } = await sb.from('pareja_solicitudes').update({ estado: 'rechazada' }).eq('id', id);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  db.parejaSolicitudesRecibidas = db.parejaSolicitudesRecibidas.filter(s => s.id !== id);
+  renderParejaConfig();
+  showToast('Invitación rechazada');
+}
+
+async function aceptarInvitacionPareja(id) {
+  const sol = (db.parejaSolicitudesRecibidas || []).find(s => s.id === id);
+  if (!sol) return;
+  const { data, error } = await sb.from('parejas').insert({
+    user_a: sol.from_user, user_b: currentUser.id, email_a: sol.from_email, email_b: currentUser.email
+  }).select().single();
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  await sb.from('pareja_solicitudes').update({ estado: 'aceptada' }).eq('id', id);
+  db.parejas.push(data);
+  db.parejaSolicitudesRecibidas = db.parejaSolicitudesRecibidas.filter(s => s.id !== id);
+  renderParejaConfig();
+  showToast('¡Vinculados! ✓');
+}
+
+async function desvincularPareja(id) {
+  confirmarEliminar('el vínculo de pareja', 'Dejarán de ver los gastos e ingresos compartidos entre ustedes. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('parejas').delete().eq('id', id);
+    if (error) { showToast('Error: ' + error.message, 'error'); return; }
+    db.parejas = db.parejas.filter(p => p.id !== id);
+    renderParejaConfig();
+    showToast('Vínculo eliminado');
+  });
 }
 async function addCategory(){
   const name=document.getElementById('new-cat-name').value.trim(),emoji=document.getElementById('new-cat-emoji').value.trim()||'📄';
@@ -2792,11 +2998,8 @@ function calcProporcionMes(month, year) {
     return { monto: 0, esFallback: false };
   };
 
-  // Buscar el user_id de la pareja (el otro usuario que aparece en ingresos compartidos)
-  const otherUserId = (() => {
-    const otros = dbCompartido.ingresos.filter(i => i.user_id !== currentUser.id);
-    return otros.length > 0 ? otros[0].user_id : null;
-  })();
+  // Buscar el user_id de la pareja a partir del vínculo confirmado (no de "cualquier otro usuario")
+  const otherUserId = miParejaActual()?.partnerId || null;
 
   const { monto: miIngreso, esFallback: misFallback } = ultimoFijoPara(currentUser.id);
   const { monto: otroIngreso, esFallback: otroFallback } = otherUserId
