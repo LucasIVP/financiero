@@ -1874,10 +1874,21 @@ function renderTarjetas() {
     list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">${db.tarjetas.map(t => {
       const cuotasTC = planesArr.filter(p => p.tarjeta?.id === t.id);
       const totalTC = cuotasTC.reduce((s, p) => s + toARS(p.cuotaMonto, p.primera.moneda), 0);
+
+      // Préstamos a terceros hechos con esta tarjeta: cuotas pendientes de cobro del mes seleccionado
+      const cuotasPrestamoMes = (db.prestamosCuotas || []).filter(c => {
+        const pr = (db.prestamos || []).find(p => p.id === c.prestamo_id);
+        return pr && pr.tarjeta_id === t.id && !c.cobrada && c.fecha.slice(0, 7) === selectedYM;
+      });
+      const totalMeDeben = cuotasPrestamoMes.reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
+      const neto = totalTC - totalMeDeben;
+
       return `<div class="cuota-card" style="border-left:4px solid ${t.color}">
         <div class="cuota-header"><span class="cuota-name" style="color:${t.color}">${t.nombre}</span><button class="del-btn" onclick="deleteTarjeta('${t.id}')">🗑</button></div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${t.banco || ''} · ${t.red} · Cierra día ${t.dia_cierre}${t.dia_vencimiento ? ` · Vence día ${t.dia_vencimiento}` : ''}</div>
-        <div style="font-size:13px">Cuota mensual activa: <strong>${fmtARS(totalTC)}</strong></div>
+        <div style="font-size:13px;margin-bottom:4px">Debo (cuotas activas): <strong>${fmtARS(totalTC)}</strong></div>
+        ${totalMeDeben > 0 ? `<div style="font-size:13px;margin-bottom:4px;color:var(--green)">Me deben este mes: <strong>${fmtARS(totalMeDeben)}</strong></div>` : ''}
+        <div style="font-size:13px;padding-top:8px;margin-top:4px;border-top:1px solid var(--border)">Total a pagar al vencimiento: <strong style="color:${neto > 0 ? 'var(--red)' : 'var(--green)'}">${fmtARS(neto)}</strong></div>
       </div>`;
     }).join('')}</div>`;
   }
