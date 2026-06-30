@@ -3467,7 +3467,36 @@ function renderGrupales() {
     lista.innerHTML = '<div class="empty-state">No hay gastos grupales registrados</div>'; return;
   }
 
-  lista.innerHTML = grupales.map(g => {
+  // Resumen por persona: sumar pendientes de cobro/pago agrupado por nombre
+  const porPersona = {};
+  partsAll.filter(p => !p.es_yo && !p.pagado).forEach(p => {
+    const key = p.nombre;
+    if (!porPersona[key]) porPersona[key] = { meDeben: 0, leDebo: 0 };
+    const monto = toARS(p.monto_parte, p.moneda);
+    if (p.rol === 'me_debe') porPersona[key].meDeben += monto;
+    else porPersona[key].leDebo += monto;
+  });
+  const personasConSaldo = Object.entries(porPersona).filter(([,v]) => v.meDeben > 0 || v.leDebo > 0);
+
+  const resumenHTML = personasConSaldo.length > 0 ? `
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:12px">👥 Saldo pendiente por persona</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${personasConSaldo.map(([nombre, v]) => {
+          const neto = v.meDeben - v.leDebo;
+          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid ${neto>=0?'var(--green)':'var(--warn)'}">
+            <span style="font-weight:600">${nombre}</span>
+            <div style="text-align:right;display:flex;flex-direction:column;gap:2px;align-items:flex-end">
+              ${v.meDeben>0?`<span style="font-size:12px;color:var(--green)">Me debe: ${fmtARS(v.meDeben)}</span>`:''}
+              ${v.leDebo>0?`<span style="font-size:12px;color:var(--warn)">Le debo: ${fmtARS(v.leDebo)}</span>`:''}
+              <span style="font-weight:700;font-size:14px;color:${neto>=0?'var(--green)':'var(--warn)'}">Neto: ${neto>=0?'+':''}${fmtARS(neto)}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  lista.innerHTML = resumenHTML + grupales.map(g => {
     const parts = partsAll.filter(p => p.gasto_grupal_id === g.id);
     const yo = parts.find(p => p.es_yo);
     const otros = parts.filter(p => !p.es_yo);
