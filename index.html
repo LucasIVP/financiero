@@ -1875,20 +1875,20 @@ function renderTarjetas() {
       const cuotasTC = planesArr.filter(p => p.tarjeta?.id === t.id);
       const totalTC = cuotasTC.reduce((s, p) => s + toARS(p.cuotaMonto, p.primera.moneda), 0);
 
-      // Préstamos a terceros hechos con esta tarjeta: cuotas pendientes de cobro del mes seleccionado
-      const cuotasPrestamoMes = (db.prestamosCuotas || []).filter(c => {
-        const pr = (db.prestamos || []).find(p => p.id === c.prestamo_id);
-        return pr && pr.tarjeta_id === t.id && !c.cobrada && c.fecha.slice(0, 7) === selectedYM;
-      });
-      const totalMeDeben = cuotasPrestamoMes.reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
-      const neto = totalTC - totalMeDeben;
+      // Préstamos a terceros hechos con esta tarjeta: cuota mensual de los préstamos aún activos
+      // (el banco te cobra esto igual, independientemente de si te lo devuelven o no)
+      const prestamosTC = (db.prestamos || []).filter(p =>
+        p.tarjeta_id === t.id && (db.prestamosCuotas || []).some(c => c.prestamo_id === p.id && !c.cobrada)
+      );
+      const totalPrestamos = prestamosTC.reduce((s, p) => s + toARS(p.monto / p.ncuotas, p.moneda), 0);
+      const totalPagar = totalTC + totalPrestamos;
 
       return `<div class="cuota-card" style="border-left:4px solid ${t.color}">
         <div class="cuota-header"><span class="cuota-name" style="color:${t.color}">${t.nombre}</span><button class="del-btn" onclick="deleteTarjeta('${t.id}')">🗑</button></div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${t.banco || ''} · ${t.red} · Cierra día ${t.dia_cierre}${t.dia_vencimiento ? ` · Vence día ${t.dia_vencimiento}` : ''}</div>
-        <div style="font-size:13px;margin-bottom:4px">Debo (cuotas activas): <strong>${fmtARS(totalTC)}</strong></div>
-        ${totalMeDeben > 0 ? `<div style="font-size:13px;margin-bottom:4px;color:var(--green)">Me deben este mes: <strong>${fmtARS(totalMeDeben)}</strong></div>` : ''}
-        <div style="font-size:13px;padding-top:8px;margin-top:4px;border-top:1px solid var(--border)">Total a pagar al vencimiento: <strong style="color:${neto > 0 ? 'var(--red)' : 'var(--green)'}">${fmtARS(neto)}</strong></div>
+        <div style="font-size:13px;margin-bottom:4px">Mis cuotas: <strong>${fmtARS(totalTC)}</strong></div>
+        ${totalPrestamos > 0 ? `<div style="font-size:13px;margin-bottom:4px">Préstamos a terceros: <strong>${fmtARS(totalPrestamos)}</strong></div>` : ''}
+        <div style="font-size:13px;padding-top:8px;margin-top:4px;border-top:1px solid var(--border)">Total a pagar al vencimiento: <strong style="color:var(--red)">${fmtARS(totalPagar)}</strong></div>
       </div>`;
     }).join('')}</div>`;
   }
