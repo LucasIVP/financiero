@@ -2900,7 +2900,16 @@ function renderDashboard(){
   const tC=cuotasMes.reduce((s,g)=>s+toARS(g.monto,g.moneda),0);
   const nPlanesActivos=planesActivos.length;
   const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
-  document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${bal>=0?'amount-positive':'amount-negative'}">${fmtARS(bal)}</div><div class="card-sub">${bal>=0?'Superávit 🎉':'Déficit ⚠️'}</div></div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
+  // Balance de referencia: si no hay ingresos cargados este mes, usar el último ingreso fijo conocido (misma lógica que Objetivos del mes)
+  let balParaMostrar=bal, balEsRef=false, balRefLabel='';
+  if(tI===0){
+    const ultimoFijo=getUltimoIngresoFijo();
+    if(ultimoFijo){balParaMostrar=ultimoFijo.total-tG;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
+  }
+  const balSub=balEsRef
+    ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}</div>`
+    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}</div>`;
+  document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
   renderObjetivosDashboard(tI, tG, bal);
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
