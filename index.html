@@ -1897,98 +1897,151 @@ function renderTarjetas() {
 }
 
 function renderCalendarioTC(month, year, gastosTC) {
+  const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const dolar = db.config.dolar || 1;
   const ingresosMes = filterByMonth(db.ingresos, month, year);
   const totalIngresos = ingresosMes.reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
 
-  // Agrupar cuotas por tarjeta para este mes
-  const porTarjeta = {};
-  gastosTC.forEach(g => {
-    const tid = g.tarjeta_id || '__sin__';
-    if (!porTarjeta[tid]) porTarjeta[tid] = { gastos: [], tarjeta: db.tarjetas?.find(t => t.id === tid) };
-    porTarjeta[tid].gastos.push(g);
-  });
-
-  const hoy = new Date();
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const diasMes = new Date(year, month + 1, 0).getDate();
+  const hoyYM = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-  // Eventos del mes: cierres de tarjeta + ingresos
+  // Eventos del mes: cierres + vencimientos de tarjeta, cobros de préstamos pendientes, ingresos
   const eventos = [];
 
-  // Cierres de tarjeta
   (db.tarjetas || []).forEach(t => {
-    const dia = Math.min(t.dia_cierre, diasMes);
     const gastosT = gastosTC.filter(g => g.tarjeta_id === t.id);
     const totalT = gastosT.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
-    eventos.push({ dia, tipo: 'cierre', tarjeta: t, total: totalT });
+
+    const diaCierre = Math.min(t.dia_cierre, diasMes);
+    const fechaCierre = new Date(year, month, diaCierre);
+    eventos.push({ fecha: fechaCierre, tipo: 'cierre', tarjeta: t, total: totalT, n: gastosT.length });
+
+    let fechaVenc = null;
     if (t.dia_vencimiento) {
-      let diaV = t.dia_vencimiento;
       let mV = month, yV = year;
-      if (diaV <= t.dia_cierre) { mV++; if (mV > 11) { mV = 0; yV++; } }
-      eventos.push({ dia: diaV, mes: mV, anio: yV, tipo: 'vencimiento', tarjeta: t, total: totalT });
+      if (t.dia_vencimiento <= t.dia_cierre) { mV++; if (mV > 11) { mV = 0; yV++; } }
+      const diasMesV = new Date(yV, mV + 1, 0).getDate();
+      fechaVenc = new Date(yV, mV, Math.min(t.dia_vencimiento, diasMesV));
+      eventos.push({ fecha: fechaVenc, tipo: 'vencimiento', tarjeta: t, total: totalT });
+    }
+
+    // Cobros pendientes de préstamos hechos con esta tarjeta este mes (se cobran junto al vencimiento)
+    const cuotasCobrar = (db.prestamosCuotas || []).filter(c => {
+      const pr = (db.prestamos || []).find(p => p.id === c.prestamo_id);
+      return pr && pr.tarjeta_id === t.id && !c.cobrada && c.fecha.slice(0, 7) === hoyYM;
+    });
+    if (cuotasCobrar.length > 0) {
+      const totalCobrar = cuotasCobrar.reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
+      eventos.push({ fecha: fechaVenc || fechaCierre, tipo: 'cobro', tarjeta: t, total: totalCobrar, n: cuotasCobrar.length });
     }
   });
 
-  // Ingresos
   ingresosMes.forEach(i => {
-    const dia = parseInt(i.fecha.split('-')[2]);
-    eventos.push({ dia, tipo: 'ingreso', ingreso: i });
+    eventos.push({ fecha: new Date(i.fecha + 'T12:00:00'), tipo: 'ingreso', ingreso: i });
   });
 
-  eventos.sort((a, b) => a.dia - b.dia);
+  eventos.sort((a, b) => a.fecha - b.fecha);
 
   const totalCuotasMes = gastosTC.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+  const totalCobrosMes = eventos.filter(e => e.tipo === 'cobro').reduce((s, e) => s + e.total, 0);
+
+  // Agrupar eventos por día
+  const grupos = [];
+  eventos.forEach(ev => {
+    const key = ev.fecha.toDateString();
+    let grupo = grupos.find(g => g.key === key);
+    if (!grupo) { grupo = { key, fecha: ev.fecha, eventos: [] }; grupos.push(grupo); }
+    grupo.eventos.push(ev);
+  });
 
   let html = `<div class="card" style="margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:600">Flujo del mes — ${MONTHS[month]} ${year}</div>
-      <div style="font-size:13px;color:var(--muted)">Ingresos: <span style="color:var(--green);font-weight:600">${fmtARS(totalIngresos)}</span> · Cuotas TC: <span style="color:var(--red);font-weight:600">${fmtARS(totalCuotasMes)}</span></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px">`;
+      <div style="font-size:13px;color:var(--muted)">Ingresos: <span style="color:var(--green);font-weight:600">${fmtARS(totalIngresos)}</span> · Cuotas TC: <span style="color:var(--red);font-weight:600">${fmtARS(totalCuotasMes)}</span>${totalCobrosMes > 0 ? ` · Cobros pendientes: <span style="color:var(--accent);font-weight:600">${fmtARS(totalCobrosMes)}</span>` : ''}</div>
+    </div>`;
 
-  if (eventos.length === 0) {
+  if (grupos.length === 0) {
     html += '<div class="empty-state">No hay eventos este mes. Configurá tus tarjetas y cargá ingresos.</div>';
   } else {
-    eventos.forEach(ev => {
-      if (ev.tipo === 'cierre') {
-        const esHoy = ev.dia === hoy.getDate() && month === hoy.getMonth() && year === hoy.getFullYear();
-        const pasado = new Date(year, month, ev.dia) < hoy;
-        html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:10px;border-left:3px solid ${ev.tarjeta.color}${pasado ? ';opacity:0.6' : ''}">
-          <div style="font-size:20px;min-width:36px;text-align:center">💳</div>
-          <div style="flex:1">
-            <div style="font-weight:600;font-size:14px">Cierre ${ev.tarjeta.nombre} <span style="font-size:12px;color:var(--muted)">(${ev.tarjeta.red})</span></div>
-            <div style="font-size:12px;color:var(--muted)">Día ${ev.dia}${esHoy ? ' — <span style="color:var(--warn)">hoy</span>' : ''}</div>
+    html += `<div style="position:relative">
+      <div style="position:absolute;left:23px;top:6px;bottom:6px;width:2px;background:var(--border)"></div>
+      <div style="display:flex;flex-direction:column;gap:18px">`;
+
+    grupos.forEach(grupo => {
+      const fechaDia = new Date(grupo.fecha); fechaDia.setHours(0, 0, 0, 0);
+      const diffDias = Math.round((fechaDia - hoy) / 86400000);
+      const esHoy = diffDias === 0;
+      const pasado = diffDias < 0;
+      let etiqueta;
+      if (esHoy) etiqueta = 'Hoy';
+      else if (diffDias === 1) etiqueta = 'Mañana';
+      else if (diffDias === -1) etiqueta = 'Ayer';
+      else if (diffDias > 1) etiqueta = `En ${diffDias} días`;
+      else etiqueta = `Hace ${Math.abs(diffDias)} días`;
+      const mesLabel = grupo.fecha.getMonth() !== month ? ` ${MONTHS[grupo.fecha.getMonth()].slice(0, 3)}` : '';
+
+      html += `<div style="display:flex;gap:14px${pasado ? ';opacity:0.55' : ''}">
+        <div style="min-width:46px;text-align:center;z-index:1">
+          <div style="width:46px;height:46px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${esHoy ? 'var(--accent)' : 'var(--surface2)'};border:2px solid ${esHoy ? 'var(--accent)' : 'var(--border)'}">
+            <div style="font-weight:700;font-size:15px;line-height:1;color:${esHoy ? '#fff' : 'var(--text)'}">${grupo.fecha.getDate()}</div>
+            <div style="font-size:9px;color:${esHoy ? 'rgba(255,255,255,0.85)' : 'var(--muted)'};text-transform:uppercase">${WEEKDAYS[grupo.fecha.getDay()]}${mesLabel}</div>
           </div>
-          <div style="text-align:right">
-            <div style="font-weight:700;color:var(--red)">${fmtARS(ev.total)}</div>
-            <div style="font-size:11px;color:var(--muted)">${ev.tarjeta.gastos?.length || gastosTC.filter(g=>g.tarjeta_id===ev.tarjeta.id).length} cuota${gastosTC.filter(g=>g.tarjeta_id===ev.tarjeta.id).length!==1?'s':''}</div>
-          </div>
-        </div>`;
-      } else if (ev.tipo === 'vencimiento') {
-        const label = ev.mes !== month ? ` (${MONTHS[ev.mes]} ${ev.anio})` : '';
-        html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,179,71,0.08);border-radius:10px;border-left:3px solid var(--warn)">
-          <div style="font-size:20px;min-width:36px;text-align:center">⚠️</div>
-          <div style="flex:1">
-            <div style="font-weight:600;font-size:14px">Vencimiento ${ev.tarjeta.nombre}</div>
-            <div style="font-size:12px;color:var(--muted)">Día ${ev.dia}${label}</div>
-          </div>
-          <div style="font-weight:700;color:var(--warn)">${fmtARS(ev.total)}</div>
-        </div>`;
-      } else if (ev.tipo === 'ingreso') {
-        const montoFmt = ev.ingreso.moneda === 'USD' ? fmtUSD(ev.ingreso.monto) : fmtARS(ev.ingreso.monto);
-        html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(0,212,170,0.06);border-radius:10px;border-left:3px solid var(--green)">
-          <div style="font-size:20px;min-width:36px;text-align:center">💵</div>
-          <div style="flex:1">
-            <div style="font-weight:600;font-size:14px">${ev.ingreso.fuente}</div>
-            <div style="font-size:12px;color:var(--muted)">Día ${ev.dia}</div>
-          </div>
-          <div style="font-weight:700;color:var(--green)">${montoFmt}</div>
-        </div>`;
-      }
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;white-space:nowrap">${etiqueta}</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;padding-top:2px">`;
+
+      grupo.eventos.forEach(ev => {
+        if (ev.tipo === 'cierre') {
+          html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:10px;border-left:3px solid ${ev.tarjeta.color}">
+            <div style="font-size:18px;min-width:30px;text-align:center">💳</div>
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:14px">Cierre ${ev.tarjeta.nombre} <span style="font-size:11px;color:var(--muted)">(${ev.tarjeta.red})</span></div>
+              <div style="font-size:11px;color:var(--muted)">Cierra el resumen · informativo</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-weight:600;color:var(--muted)">${fmtARS(ev.total)}</div>
+              <div style="font-size:11px;color:var(--muted)">${ev.n} cuota${ev.n !== 1 ? 's' : ''}</div>
+            </div>
+          </div>`;
+        } else if (ev.tipo === 'vencimiento') {
+          html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,179,71,0.1);border-radius:10px;border-left:3px solid var(--warn)">
+            <div style="font-size:18px;min-width:30px;text-align:center">⚠️</div>
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:14px">Vencimiento ${ev.tarjeta.nombre}</div>
+              <div style="font-size:11px;color:var(--muted)">Hay que pagarlo</div>
+            </div>
+            <div style="font-weight:700;color:var(--warn)">${fmtARS(ev.total)}</div>
+          </div>`;
+        } else if (ev.tipo === 'cobro') {
+          html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(108,99,255,0.1);border-radius:10px;border-left:3px solid var(--accent)">
+            <div style="font-size:18px;min-width:30px;text-align:center">🤝</div>
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:14px">Cobro pendiente · ${ev.tarjeta.nombre}</div>
+              <div style="font-size:11px;color:var(--muted)">${ev.n} préstamo${ev.n !== 1 ? 's' : ''} a terceros</div>
+            </div>
+            <div style="font-weight:700;color:var(--accent)">${fmtARS(ev.total)}</div>
+          </div>`;
+        } else if (ev.tipo === 'ingreso') {
+          const montoFmt = ev.ingreso.moneda === 'USD' ? fmtUSD(ev.ingreso.monto) : fmtARS(ev.ingreso.monto);
+          html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(0,212,170,0.08);border-radius:10px;border-left:3px solid var(--green)">
+            <div style="font-size:18px;min-width:30px;text-align:center">💵</div>
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:14px">${ev.ingreso.fuente}</div>
+              <div style="font-size:11px;color:var(--muted)">Ingreso</div>
+            </div>
+            <div style="font-weight:700;color:var(--green)">${montoFmt}</div>
+          </div>`;
+        }
+      });
+
+      html += `</div></div>`;
     });
+
+    html += `</div></div>`;
   }
 
-  html += '</div></div>';
+  html += '</div>';
   document.getElementById('tc-calendario').innerHTML = html;
 }
 
