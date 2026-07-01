@@ -3276,22 +3276,22 @@ async function guardarDatosGrupal() {
   const moneda = document.getElementById('eg-moneda').value;
   if (!descripcion || isNaN(monto) || monto <= 0) { showToast('Completá descripción y monto', 'error'); return; }
 
-  const { error } = await sb.from('gastos_grupales').update({ descripcion, monto, moneda }).eq('id', grupalId);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  // 1. Actualizar el gasto grupal
+  const { error: errGasto } = await sb.from('gastos_grupales').update({ descripcion, monto, moneda }).eq('id', grupalId);
+  if (errGasto) { showToast('Error al guardar: ' + errGasto.message, 'error'); return; }
 
-  // Recalcular monto_parte de cada participante con el nuevo monto total
+  // 2. Recalcular y actualizar monto_parte de cada participante
   const parts = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id === grupalId);
   const parteMonto = Math.round(monto / parts.length * 100) / 100;
-  await Promise.all(parts.map(p =>
+  const { error: errParts } = await Promise.all(parts.map(p =>
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto, moneda }).eq('id', p.id)
-  ));
-  parts.forEach(p => { p.monto_parte = parteMonto; p.moneda = moneda; });
+  )).then(() => ({ error: null })).catch(e => ({ error: e }));
+  if (errParts) { showToast('Error al actualizar participantes', 'error'); return; }
 
-  const g = dbCompartido.grupales.find(x => x.id === grupalId);
-  if (g) { g.descripcion = descripcion; g.monto = monto; g.moneda = moneda; }
-
-  renderEditGrupalLista(grupalId);
+  // 3. Recargar datos frescos desde Supabase y re-renderizar
+  await loadCompartido();
   renderGrupales();
+  renderEditGrupalLista(grupalId);
   showToast('Gasto actualizado ✓');
 }
 
@@ -3595,7 +3595,7 @@ function renderGrupales() {
       ${pendientes.length > 0 ? `<div style="font-size:12px;color:var(--warn);margin-bottom:10px">⚠️ ${pendientes.length} pago${pendientes.length!==1?'s':''} pendiente${pendientes.length!==1?'s':''}</div>` : ''}
       ${otrosHTML}
       <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">
-        <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="abrirEditGrupal('${g.id}')">✏️ Editar participantes</button>
+        <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="abrirEditGrupal('${g.id}')">✏️ Editar</button>
         <button class="del-btn" onclick="deleteGastoGrupal('${g.id}')">🗑 Eliminar</button>
       </div>
     </div>`;
