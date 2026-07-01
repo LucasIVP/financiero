@@ -3280,13 +3280,13 @@ async function guardarDatosGrupal() {
   const res1 = await sb.from('gastos_grupales').update({ descripcion, monto, moneda }).eq('id', grupalId);
   if (res1.error) { showToast('Error: ' + res1.error.message, 'error'); return; }
 
-  // 2. Recalcular monto_parte para cada participante
+  // 2. Recalcular monto_parte para todos los participantes en una sola query
   const parts = dbCompartido.grupalesParticipantes.filter(p => p.gasto_grupal_id === grupalId);
   const parteMonto = Math.round(monto / parts.length * 100) / 100;
-  for (const p of parts) {
-    const res2 = await sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto, moneda }).eq('id', p.id);
-    if (res2.error) { showToast('Error al actualizar participante: ' + res2.error.message, 'error'); return; }
-  }
+  const res2 = await sb.from('gastos_grupales_participantes')
+    .update({ monto_parte: parteMonto, moneda })
+    .eq('gasto_grupal_id', grupalId);
+  if (res2.error) { showToast('Error al actualizar participantes: ' + res2.error.message, 'error'); return; }
 
   // 3. Recargar datos frescos y re-renderizar
   await loadCompartido();
