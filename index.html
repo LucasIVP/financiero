@@ -146,10 +146,8 @@
   <button class="nav-btn" onclick="goTo('gastos')">💸 Gastos</button>
   <button class="nav-btn" onclick="goTo('ingresos')">💵 Ingresos</button>
   <button class="nav-btn" onclick="goTo('tarjetas')">💳 Tarjetas</button>
-  <button class="nav-btn" onclick="goTo('inversiones')">📈 Inversiones</button>
-  <button class="nav-btn" onclick="goTo('patrimonio')">🏦 Patrimonio</button>
+  <button class="nav-btn" onclick="goTo('patrimonio')">📊 Patrimonio y Análisis</button>
   <button class="nav-btn" onclick="goTo('compartido')">🏠 Compartido</button>
-  <button class="nav-btn" onclick="goTo('analisis')">🔎 Análisis</button>
 <button class="nav-btn" onclick="goTo('compras');renderCompras()">🛒 Compras</button>
 <button class="nav-btn" onclick="goTo('config')">⚙️ Config</button>
   <span class="nav-spacer"></span>
@@ -435,23 +433,89 @@
   </div>
 </div>
 
-<div id="page-inversiones" class="page">
-  <div class="section-header"><div class="section-title">📈 Inversiones</div><button class="btn btn-primary" onclick="openModal('modal-inversion')">+ Nueva inversión</button></div>
-  <div class="grid-4" id="inv-kpis" style="margin-bottom:20px"></div>
-  <div class="grid-2">
-    <div class="card"><div class="card-title" style="margin-bottom:14px">Portafolio por instrumento</div><div id="inv-list"></div></div>
-    <div class="card"><div class="card-title">Distribución</div><div class="chart-container" style="height:240px"><canvas id="chart-inv"></canvas></div></div>
-  </div>
-</div>
-
 <div id="page-patrimonio" class="page">
-  <div class="section-header"><div class="section-title">🏦 Patrimonio neto</div></div>
-  <div class="grid-3" style="margin-bottom:20px" id="pat-kpis"></div>
-  <div class="grid-2">
-    <div class="card"><div style="font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between"><span>Activos</span><button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="openModal('modal-activo')">+ Activo</button></div><div id="activos-list"></div></div>
-    <div class="card"><div style="font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between"><span>Deudas</span><button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="openModal('modal-deuda')">+ Deuda</button></div><div id="deudas-list"></div></div>
+  <div class="section-header" style="margin-bottom:4px"><div class="section-title">📊 Patrimonio y Análisis</div></div>
+  <div class="inner-tabs">
+    <button class="inner-tab active" onclick="innerTab('patrimonio','resumen',event)">🏦 Patrimonio</button>
+    <button class="inner-tab" onclick="innerTab('patrimonio','inversiones',event);renderInversiones()">📈 Inversiones</button>
+    <button class="inner-tab" onclick="innerTab('patrimonio','analisis',event);renderAnalisis()">🔎 Análisis y Ahorro</button>
   </div>
-  <div class="card" style="margin-top:16px"><div class="card-title" style="margin-bottom:14px">Evolución del patrimonio</div><div class="chart-container" style="height:220px"><canvas id="chart-pat"></canvas></div></div>
+
+  <div id="patrimonio-resumen" class="inner-section active">
+    <div class="grid-3" style="margin-bottom:20px" id="pat-kpis"></div>
+    <div class="grid-2">
+      <div class="card"><div style="font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between"><span>Activos</span><button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="openModal('modal-activo')">+ Activo</button></div><div id="activos-list"></div></div>
+      <div class="card"><div style="font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between"><span>Deudas</span><button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="openModal('modal-deuda')">+ Deuda</button></div><div id="deudas-list"></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-title" style="margin-bottom:14px">Evolución del patrimonio</div><div class="chart-container" style="height:220px"><canvas id="chart-pat"></canvas></div></div>
+  </div>
+
+  <div id="patrimonio-inversiones" class="inner-section">
+    <div class="section-header"><div class="card-title">Portafolio de inversiones</div><button class="btn btn-primary" onclick="openModal('modal-inversion')">+ Nueva inversión</button></div>
+    <div class="grid-4" id="inv-kpis" style="margin-bottom:20px"></div>
+    <div class="grid-2">
+      <div class="card"><div class="card-title" style="margin-bottom:14px">Portafolio por instrumento</div><div id="inv-list"></div></div>
+      <div class="card"><div class="card-title">Distribución</div><div class="chart-container" style="height:240px"><canvas id="chart-inv"></canvas></div></div>
+    </div>
+  </div>
+
+  <div id="patrimonio-analisis" class="inner-section">
+    <div class="section-header" style="margin-bottom:20px">
+      <div><div style="color:var(--muted);font-size:13px">Dónde se va la plata y qué se puede recortar</div></div>
+      <div class="month-selector">
+        <select id="an-month" onchange="renderAnalisis()"></select>
+        <select id="an-year" onchange="renderAnalisis()"></select>
+      </div>
+    </div>
+
+    <div class="grid-4" id="an-kpis" style="margin-bottom:20px"></div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-header">
+        <span style="font-weight:600">🔁 Recurrentes por costo acumulado</span>
+        <span id="an-recurrentes-total" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div id="an-recurrentes-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto mensual</th><th>Meses activo</th><th>Costo acumulado</th><th>Estado</th></tr></thead>
+        <tbody id="an-recurrentes-body"></tbody></table>
+      </div>
+      <div id="an-recurrentes-empty" class="empty-state" style="display:none">No hay gastos recurrentes cargados todavía.</div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-header">
+        <span style="font-weight:600">📊 Variación vs. promedio (últimos 3 meses)</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Agrupado por subcategoría cuando está cargada; si no, por categoría.</div>
+      <div id="an-variacion-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio 3 meses</th><th>Variación</th></tr></thead>
+        <tbody id="an-variacion-body"></tbody></table>
+      </div>
+      <div id="an-variacion-empty" class="empty-state" style="display:none">No hay suficientes meses cargados para comparar.</div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-header">
+        <span style="font-weight:600">💳 Cuotas pendientes — proyección mensual</span>
+        <span id="an-cuotas-total" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Complementa a Tarjetas → Cuotas activas: acá se suma el compromiso total mes a mes, no plan por plan.</div>
+      <div id="an-cuotas-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+      <div style="height:220px"><canvas id="an-cuotas-chart"></canvas></div>
+      <div id="an-cuotas-empty" class="empty-state" style="display:none">No hay cuotas pendientes.</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="section-header"><span style="font-weight:600">🏦 Fijos vs. variables</span></div>
+        <div id="an-fijos-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+        <div style="height:220px"><canvas id="an-fijos-chart"></canvas></div>
+      </div>
+      <div class="card" id="an-fijos-detalle"></div>
+    </div>
+  </div>
 </div>
 <div id="page-compartido" class="page">
   <div class="section-header" style="margin-bottom:20px">
@@ -774,64 +838,6 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
 </div>
 
 <!-- PÁGINA ANÁLISIS Y AHORRO -->
-<div id="page-analisis" class="page">
-  <div class="section-header" style="margin-bottom:20px">
-    <div><div class="section-title">🔎 Análisis y Ahorro</div><div style="color:var(--muted);font-size:13px;margin-top:2px">Dónde se va la plata y qué se puede recortar</div></div>
-    <div class="month-selector">
-      <select id="an-month" onchange="renderAnalisis()"></select>
-      <select id="an-year" onchange="renderAnalisis()"></select>
-    </div>
-  </div>
-
-  <div class="grid-4" id="an-kpis" style="margin-bottom:20px"></div>
-
-  <div class="card" style="margin-bottom:20px">
-    <div class="section-header">
-      <span style="font-weight:600">🔁 Recurrentes por costo acumulado</span>
-      <span id="an-recurrentes-total" style="font-size:13px;color:var(--muted)"></span>
-    </div>
-    <div id="an-recurrentes-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
-    <div class="table-wrap">
-      <table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto mensual</th><th>Meses activo</th><th>Costo acumulado</th><th>Estado</th></tr></thead>
-      <tbody id="an-recurrentes-body"></tbody></table>
-    </div>
-    <div id="an-recurrentes-empty" class="empty-state" style="display:none">No hay gastos recurrentes cargados todavía.</div>
-  </div>
-
-  <div class="card" style="margin-bottom:20px">
-    <div class="section-header">
-      <span style="font-weight:600">📊 Variación vs. promedio (últimos 3 meses)</span>
-    </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Agrupado por subcategoría cuando está cargada; si no, por categoría.</div>
-    <div id="an-variacion-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
-    <div class="table-wrap">
-      <table><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio 3 meses</th><th>Variación</th></tr></thead>
-      <tbody id="an-variacion-body"></tbody></table>
-    </div>
-    <div id="an-variacion-empty" class="empty-state" style="display:none">No hay suficientes meses cargados para comparar.</div>
-  </div>
-
-  <div class="card" style="margin-bottom:20px">
-    <div class="section-header">
-      <span style="font-weight:600">💳 Cuotas pendientes — proyección mensual</span>
-      <span id="an-cuotas-total" style="font-size:13px;color:var(--muted)"></span>
-    </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Complementa a Tarjetas → Cuotas activas: acá se suma el compromiso total mes a mes, no plan por plan.</div>
-    <div id="an-cuotas-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
-    <div style="height:220px"><canvas id="an-cuotas-chart"></canvas></div>
-    <div id="an-cuotas-empty" class="empty-state" style="display:none">No hay cuotas pendientes.</div>
-  </div>
-
-  <div class="grid-2">
-    <div class="card">
-      <div class="section-header"><span style="font-weight:600">🏦 Fijos vs. variables</span></div>
-      <div id="an-fijos-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
-      <div style="height:220px"><canvas id="an-fijos-chart"></canvas></div>
-    </div>
-    <div class="card" id="an-fijos-detalle"></div>
-  </div>
-</div>
-
 <!-- PÁGINA LISTA DE COMPRAS -->
 <div id="page-compras" class="page">
   <div class="section-header" style="margin-bottom:16px">
@@ -1490,7 +1496,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig,compras:renderCompras,analisis:renderAnalisis};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig,compras:renderCompras};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
