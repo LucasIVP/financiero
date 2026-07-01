@@ -149,6 +149,7 @@
   <button class="nav-btn" onclick="goTo('inversiones')">📈 Inversiones</button>
   <button class="nav-btn" onclick="goTo('patrimonio')">🏦 Patrimonio</button>
   <button class="nav-btn" onclick="goTo('compartido')">🏠 Compartido</button>
+  <button class="nav-btn" onclick="goTo('analisis')">🔎 Análisis</button>
 <button class="nav-btn" onclick="goTo('compras');renderCompras()">🛒 Compras</button>
 <button class="nav-btn" onclick="goTo('config')">⚙️ Config</button>
   <span class="nav-spacer"></span>
@@ -772,6 +773,65 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
   </div>
 </div>
 
+<!-- PÁGINA ANÁLISIS Y AHORRO -->
+<div id="page-analisis" class="page">
+  <div class="section-header" style="margin-bottom:20px">
+    <div><div class="section-title">🔎 Análisis y Ahorro</div><div style="color:var(--muted);font-size:13px;margin-top:2px">Dónde se va la plata y qué se puede recortar</div></div>
+    <div class="month-selector">
+      <select id="an-month" onchange="renderAnalisis()"></select>
+      <select id="an-year" onchange="renderAnalisis()"></select>
+    </div>
+  </div>
+
+  <div class="grid-4" id="an-kpis" style="margin-bottom:20px"></div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="section-header">
+      <span style="font-weight:600">🔁 Recurrentes por costo acumulado</span>
+      <span id="an-recurrentes-total" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+    <div id="an-recurrentes-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto mensual</th><th>Meses activo</th><th>Costo acumulado</th><th>Estado</th></tr></thead>
+      <tbody id="an-recurrentes-body"></tbody></table>
+    </div>
+    <div id="an-recurrentes-empty" class="empty-state" style="display:none">No hay gastos recurrentes cargados todavía.</div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="section-header">
+      <span style="font-weight:600">📊 Variación vs. promedio (últimos 3 meses)</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Agrupado por subcategoría cuando está cargada; si no, por categoría.</div>
+    <div id="an-variacion-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio 3 meses</th><th>Variación</th></tr></thead>
+      <tbody id="an-variacion-body"></tbody></table>
+    </div>
+    <div id="an-variacion-empty" class="empty-state" style="display:none">No hay suficientes meses cargados para comparar.</div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="section-header">
+      <span style="font-weight:600">💳 Cuotas pendientes — proyección mensual</span>
+      <span id="an-cuotas-total" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Complementa a Tarjetas → Cuotas activas: acá se suma el compromiso total mes a mes, no plan por plan.</div>
+    <div id="an-cuotas-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+    <div style="height:220px"><canvas id="an-cuotas-chart"></canvas></div>
+    <div id="an-cuotas-empty" class="empty-state" style="display:none">No hay cuotas pendientes.</div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="section-header"><span style="font-weight:600">🏦 Fijos vs. variables</span></div>
+      <div id="an-fijos-sugerencia" style="font-size:13px;color:var(--accent2);margin-bottom:12px"></div>
+      <div style="height:220px"><canvas id="an-fijos-chart"></canvas></div>
+    </div>
+    <div class="card" id="an-fijos-detalle"></div>
+  </div>
+</div>
+
 <!-- PÁGINA LISTA DE COMPRAS -->
 <div id="page-compras" class="page">
   <div class="section-header" style="margin-bottom:16px">
@@ -1118,8 +1178,8 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
     <div style="font-weight:600;font-size:13px;margin-bottom:8px">Datos del gasto</div>
     <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-bottom:14px">
       <input type="text" id="eg-descripcion" placeholder="Descripción" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
-      <input type="number" id="eg-monto" placeholder="Monto" style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
-      <select id="eg-moneda" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+      <input type="number" id="eg-grupal-monto" placeholder="Monto" style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+      <select id="eg-grupal-moneda" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
         <option value="ARS">ARS</option>
         <option value="USD">USD</option>
       </select>
@@ -1430,7 +1490,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig,compras:renderCompras};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},inversiones:renderInversiones,patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig,compras:renderCompras,analisis:renderAnalisis};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -3263,8 +3323,8 @@ function abrirEditGrupal(grupalId) {
   if (!g) return;
   document.getElementById('eg-grupal-id').value = grupalId;
   document.getElementById('eg-descripcion').value = g.descripcion || '';
-  document.getElementById('eg-monto').value = g.monto || '';
-  document.getElementById('eg-moneda').value = g.moneda || 'ARS';
+  document.getElementById('eg-grupal-monto').value = g.monto || '';
+  document.getElementById('eg-grupal-moneda').value = g.moneda || 'ARS';
   renderEditGrupalLista(grupalId);
   openModal('modal-edit-grupal');
 }
@@ -3272,8 +3332,8 @@ function abrirEditGrupal(grupalId) {
 async function guardarDatosGrupal() {
   const grupalId = document.getElementById('eg-grupal-id').value;
   const descripcion = document.getElementById('eg-descripcion').value.trim();
-  const monto = parseFloat(document.getElementById('eg-monto').value);
-  const moneda = document.getElementById('eg-moneda').value;
+  const monto = parseFloat(document.getElementById('eg-grupal-monto').value);
+  const moneda = document.getElementById('eg-grupal-moneda').value;
   if (!descripcion || isNaN(monto) || monto <= 0) { showToast('Completá descripción y monto', 'error'); return; }
 
   // 1. Actualizar el gasto grupal
@@ -4029,6 +4089,218 @@ async function darDeBajaRecurrente(id) {
 }
 
 // ============================================================
+// ANÁLISIS Y AHORRO
+// ============================================================
+
+let chartAnCuotas = null, chartAnFijos = null;
+
+// 1. Recurrentes ordenados por costo acumulado (antigüedad × monto), no solo mensual
+function getRecurrentesPorCostoAcumulado() {
+  const hoy = new Date();
+  return getTodosRecurrentes().map(g => {
+    const inicio = new Date(g.fecha + 'T12:00:00');
+    const fin = g.fecha_fin_recurrencia ? new Date(g.fecha_fin_recurrencia + '-01T12:00:00') : hoy;
+    let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
+    if (!g.fecha_fin_recurrencia) meses += 1; // incluye el mes en curso si sigue activo
+    meses = Math.max(meses, 1);
+    const montoMensualARS = toARS(g.monto, g.moneda);
+    const activa = g.recurrente_activa !== false && !g.fecha_fin_recurrencia;
+    return { ...g, meses, montoMensualARS, costoAcumulado: montoMensualARS * meses, activa };
+  }).sort((a, b) => b.costoAcumulado - a.costoAcumulado);
+}
+
+// 2. Variación mes a mes por subcategoría (o categoría si no hay subcategorías cargadas)
+function getVariacionCategorias(month, year) {
+  const yms = [];
+  for (let i = 3; i >= 0; i--) {
+    let m = month - i, y = year;
+    while (m < 0) { m += 12; y--; }
+    yms.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+  }
+  const mesActualYM = yms[yms.length - 1];
+  const mesesAnteriores = yms.slice(0, -1);
+  const porMes = {};
+  yms.forEach(ym => porMes[ym] = {});
+
+  (db.gastos || []).forEach(g => {
+    if (g.tipo === 'ahorro') return; // el tracker de objetivo ya cubre ahorro, acá miramos gasto
+    const ym = g.fecha.slice(0, 7);
+    if (!(ym in porMes)) return;
+    const subcat = (db.subcategorias || []).find(s => s.id === g.subcat_id);
+    const label = subcat ? `${g.cat} · ${subcat.nombre}` : (g.cat || 'Sin categoría');
+    porMes[ym][label] = (porMes[ym][label] || 0) + toARS(g.monto, g.moneda);
+  });
+
+  const labels = new Set();
+  Object.values(porMes).forEach(m => Object.keys(m).forEach(l => labels.add(l)));
+
+  return [...labels].map(label => {
+    const actual = porMes[mesActualYM][label] || 0;
+    const historicos = mesesAnteriores.map(ym => porMes[ym][label] || 0);
+    const promedio = historicos.length ? historicos.reduce((a, b) => a + b, 0) / historicos.length : 0;
+    const variacionPct = promedio > 0 ? Math.round((actual - promedio) / promedio * 100) : (actual > 0 ? 100 : 0);
+    return { label, actual, promedio, variacionPct };
+  }).filter(r => r.actual > 0 || r.promedio > 0)
+    .sort((a, b) => b.variacionPct - a.variacionPct);
+}
+
+// 3. Cuotas pendientes: proyección agregada mes a mes de todos los planes activos
+// (Tarjetas → Cuotas activas ya muestra el detalle plan por plan; acá se agrega el total comprometido por mes)
+function getCuotasPendientesProyectadas() {
+  const planes = {};
+  (db.gastos || []).filter(g => g.plan_id).forEach(g => {
+    if (!planes[g.plan_id]) planes[g.plan_id] = [];
+    planes[g.plan_id].push(g);
+  });
+  const hoyYM = new Date().toISOString().slice(0, 7);
+  const proyeccion = {};
+  Object.values(planes).forEach(cuotas => {
+    cuotas.forEach(g => {
+      const ym = g.fecha.slice(0, 7);
+      if (ym < hoyYM) return; // ya devengada
+      const montoCuota = g.cuota_monto || g.monto; // fallback: algunas cuotas cargadas desde Lista de Compras no setean cuota_monto
+      proyeccion[ym] = (proyeccion[ym] || 0) + toARS(montoCuota, g.moneda);
+    });
+  });
+  const meses = Object.keys(proyeccion).sort();
+  return meses.map(ym => ({ ym, total: proyeccion[ym] }));
+}
+
+// 4. % de ingreso en gastos fijos (recurrentes activos) vs. variables
+function getFijosVsVariables(month, year) {
+  const gastos = filterByMonth(db.gastos, month, year).filter(g => g.tipo !== 'ahorro');
+  let fijos = 0, variables = 0;
+  gastos.forEach(g => {
+    const monto = toARS(g.monto, g.moneda);
+    if (g.recurrente && g.recurrente_activa !== false) fijos += monto;
+    else variables += monto;
+  });
+  let ingresoRef = filterByMonth(db.ingresos, month, year).reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
+  let sinIngresos = false, refLabel = null;
+  if (ingresoRef <= 0) {
+    const ultimo = getUltimoIngresoFijo();
+    if (ultimo) { ingresoRef = ultimo.total; refLabel = ultimo.mesLabel; sinIngresos = true; }
+  }
+  const pctFijos = ingresoRef > 0 ? Math.round(fijos / ingresoRef * 100) : 0;
+  const pctVariables = ingresoRef > 0 ? Math.round(variables / ingresoRef * 100) : 0;
+  return { fijos, variables, ingresoRef, pctFijos, pctVariables, sinIngresos, refLabel };
+}
+
+function renderAnalisis() {
+  const ms = document.getElementById('an-month');
+  if (!ms || ms.options.length === 0) fillMonthYearSelects('an-month', 'an-year');
+  const { month, year } = getSelectedMonthYear('an-month', 'an-year');
+
+  // --- 1. Recurrentes por costo acumulado ---
+  const recs = getRecurrentesPorCostoAcumulado();
+  const recsActivos = recs.filter(r => r.activa);
+  const totalAcumuladoActivos = recsActivos.reduce((s, r) => s + r.costoAcumulado, 0);
+  document.getElementById('an-recurrentes-total').textContent = `${recsActivos.length} activo${recsActivos.length !== 1 ? 's' : ''}`;
+  const tbodyRec = document.getElementById('an-recurrentes-body');
+  const emptyRec = document.getElementById('an-recurrentes-empty');
+  if (recs.length === 0) {
+    tbodyRec.innerHTML = ''; emptyRec.style.display = 'block';
+    document.getElementById('an-recurrentes-sugerencia').textContent = '';
+  } else {
+    emptyRec.style.display = 'none';
+    tbodyRec.innerHTML = recs.map(r => {
+      const catObj = db.categorias.find(c => c.name === r.cat) || { emoji: '📄' };
+      const estado = r.activa ? `<span style="color:var(--green);font-weight:600">● Activo</span>` : `<span style="color:var(--muted)">● Inactivo</span>`;
+      return `<tr>
+        <td><div style="font-weight:500">${r.desc || r.descripcion}</div></td>
+        <td><span class="tag">${catObj.emoji} ${r.cat}</span></td>
+        <td class="amount-negative">${fmtARS(r.montoMensualARS)}</td>
+        <td style="color:var(--muted)">${r.meses}</td>
+        <td style="font-weight:600">${fmtARS(r.costoAcumulado)}</td>
+        <td>${estado}</td>
+      </tr>`;
+    }).join('');
+    const top = recsActivos[0];
+    document.getElementById('an-recurrentes-sugerencia').textContent = top
+      ? `💡 "${top.desc || top.descripcion}" lleva ${fmtARS(top.costoAcumulado)} acumulados en ${top.meses} meses (${fmtARS(top.montoMensualARS)}/mes). Es el recurrente activo más caro en el tiempo.`
+      : '';
+  }
+
+  // --- 2. Variación por categoría/subcategoría ---
+  const variaciones = getVariacionCategorias(month, year);
+  const tbodyVar = document.getElementById('an-variacion-body');
+  const emptyVar = document.getElementById('an-variacion-empty');
+  if (variaciones.length === 0) {
+    tbodyVar.innerHTML = ''; emptyVar.style.display = 'block';
+    document.getElementById('an-variacion-sugerencia').textContent = '';
+  } else {
+    emptyVar.style.display = 'none';
+    tbodyVar.innerHTML = variaciones.map(v => {
+      const color = v.variacionPct > 15 ? 'var(--red)' : v.variacionPct < -15 ? 'var(--green)' : 'var(--muted)';
+      const signo = v.variacionPct > 0 ? '+' : '';
+      return `<tr>
+        <td>${v.label}</td>
+        <td>${fmtARS(v.actual)}</td>
+        <td style="color:var(--muted)">${fmtARS(v.promedio)}</td>
+        <td style="color:${color};font-weight:600">${signo}${v.variacionPct}%</td>
+      </tr>`;
+    }).join('');
+    const peor = variaciones.find(v => v.variacionPct > 15);
+    document.getElementById('an-variacion-sugerencia').textContent = peor
+      ? `💡 "${peor.label}" subió ${peor.variacionPct}% vs. el promedio de los últimos 3 meses (${fmtARS(peor.promedio)} → ${fmtARS(peor.actual)}).`
+      : '';
+  }
+
+  // --- 3. Cuotas pendientes proyectadas ---
+  const proyeccion = getCuotasPendientesProyectadas();
+  const totalPendiente = proyeccion.reduce((s, p) => s + p.total, 0);
+  document.getElementById('an-cuotas-total').textContent = totalPendiente > 0 ? `Total pendiente: ${fmtARS(totalPendiente)}` : '';
+  const emptyCuotas = document.getElementById('an-cuotas-empty');
+  const ctxCuotas = document.getElementById('an-cuotas-chart');
+  if (chartAnCuotas) { chartAnCuotas.destroy(); chartAnCuotas = null; }
+  if (proyeccion.length === 0) {
+    emptyCuotas.style.display = 'block';
+    document.getElementById('an-cuotas-sugerencia').textContent = '';
+  } else {
+    emptyCuotas.style.display = 'none';
+    const pico = proyeccion.reduce((max, p) => p.total > max.total ? p : max, proyeccion[0]);
+    document.getElementById('an-cuotas-sugerencia').textContent =
+      `💡 Tenés ${fmtARS(totalPendiente)} comprometidos en cuotas hasta ${proyeccion[proyeccion.length - 1].ym}, con un pico de ${fmtARS(pico.total)} en ${pico.ym}.`;
+    chartAnCuotas = new Chart(ctxCuotas, {
+      type: 'bar',
+      data: { labels: proyeccion.map(p => p.ym), datasets: [{ label: 'Cuotas comprometidas', data: proyeccion.map(p => p.total), backgroundColor: '#6c63ff' }] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { color: '#7b7f9e' } }, y: { ticks: { color: '#7b7f9e', callback: v => '$' + v.toLocaleString() } } }, plugins: { legend: { display: false } } }
+    });
+  }
+
+  // --- 4. % ingreso en fijos vs. variables ---
+  const fv = getFijosVsVariables(month, year);
+  const ctxFijos = document.getElementById('an-fijos-chart');
+  if (chartAnFijos) { chartAnFijos.destroy(); chartAnFijos = null; }
+  if (fv.ingresoRef > 0) {
+    chartAnFijos = new Chart(ctxFijos, {
+      type: 'doughnut',
+      data: { labels: ['Fijos', 'Variables'], datasets: [{ data: [fv.fijos, fv.variables], backgroundColor: ['#6c63ff', '#00d4aa'], borderColor: 'transparent' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#7b7f9e', font: { size: 12 } } } } }
+    });
+    document.getElementById('an-fijos-sugerencia').textContent = fv.pctFijos >= 50
+      ? `💡 Tus gastos fijos son ${fv.pctFijos}% del ingreso ${fv.sinIngresos ? 'de referencia' : 'real'} — más de la mitad ya está comprometido antes de gastar en variables.`
+      : '';
+    document.getElementById('an-fijos-detalle').innerHTML = `
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">${fv.sinIngresos ? `⚠️ Sin ingresos cargados este mes — referencia: sueldos de ${fv.refLabel}` : 'Basado en ingresos reales del mes'}</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span>Fijos</span><strong class="amount-negative">${fmtARS(fv.fijos)} (${fv.pctFijos}%)</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span>Variables</span><strong class="amount-negative">${fmtARS(fv.variables)} (${fv.pctVariables}%)</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted)"><span>Ingreso de referencia</span><strong>${fmtARS(fv.ingresoRef)}</strong></div>`;
+  } else {
+    document.getElementById('an-fijos-sugerencia').textContent = '';
+    document.getElementById('an-fijos-detalle').innerHTML = `<div class="empty-state">Sin ingresos cargados ni historial previo para estimar.</div>`;
+  }
+
+  // --- KPIs resumen ---
+  const catMayorVariacion = variaciones.find(v => v.variacionPct > 0);
+  document.getElementById('an-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Recurrentes acumulado</div><div class="card-value amount-negative">${fmtARS(totalAcumuladoActivos)}</div><div class="card-sub">${recsActivos.length} activos</div></div>
+    <div class="card"><div class="card-title">Cuotas pendientes</div><div class="card-value amount-negative">${fmtARS(totalPendiente)}</div><div class="card-sub">proyectado a futuro</div></div>
+    <div class="card"><div class="card-title">% gasto fijo</div><div class="card-value">${fv.ingresoRef > 0 ? fv.pctFijos + '%' : '—'}</div><div class="card-sub">del ingreso ${fv.sinIngresos ? 'de referencia' : 'real'}</div></div>
+    <div class="card"><div class="card-title">Mayor variación</div><div class="card-value" style="font-size:16px">${catMayorVariacion ? catMayorVariacion.label : '—'}</div><div class="card-sub">${catMayorVariacion ? '+' + catMayorVariacion.variacionPct + '%' : 'sin datos'}</div></div>`;
+}
+
+// ============================================================
 // LISTA DE COMPRAS
 // ============================================================
 
@@ -4638,7 +4910,7 @@ async function confirmarFinalizarCompra() {
     for (let i = 0; i < ncuotas; i++) {
       let m = acredMes + i, y = acredAnio;
       while (m > 11) { m -= 12; y++; }
-      const fechaCuota = `${y}-${String(m + 1).padStart(2, '0')}-${String(new Date(fecha).getDate()).padStart(2, '0')}`;
+      const fechaCuota = `${y}-${String(m + 1).padStart(2, '0')}-${String(fecha.split('-')[2]).padStart(2, '0')}`;
       cuotas.push({ user_id: currentUser.id, fecha: fechaCuota, descripcion: `${desc} (${i+1}/${ncuotas})`, monto: montoCuota, moneda: 'ARS', cat, tipo: 'cuota', medio, tarjeta_id: tarjetaId || null, plan_id: planId, cuota_num: i+1, total_cuotas: ncuotas, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras' });
     }
     const { error } = await sb.from('gastos').insert(cuotas);
@@ -4647,7 +4919,7 @@ async function confirmarFinalizarCompra() {
   } else {
     // 1 cuota o pago simple: insertar fecha de acreditación como fecha del gasto si es crédito
     const fechaGasto = (isCredito && acredMes !== null && acredAnio !== null)
-      ? `${acredAnio}-${String(acredMes + 1).padStart(2, '0')}-${String(new Date(fecha).getDate()).padStart(2, '0')}`
+      ? `${acredAnio}-${String(acredMes + 1).padStart(2, '0')}-${String(fecha.split('-')[2]).padStart(2, '0')}`
       : fecha;
     const { error } = await sb.from('gastos').insert({
       user_id: currentUser.id, fecha: fechaGasto, descripcion: desc, monto: montoNum, moneda: 'ARS',
