@@ -3291,7 +3291,9 @@ async function guardarDatosGrupal() {
   // 3. Recargar datos frescos y re-renderizar
   await loadCompartido();
   renderGrupales();
-  renderEditGrupalLista(grupalId);
+  closeModal('modal-edit-grupal');
+  // Reabrir con datos frescos
+  setTimeout(() => abrirEditGrupal(grupalId), 100);
   showToast('Gasto actualizado ✓');
 }
 
