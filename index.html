@@ -167,6 +167,7 @@
     </div>
   </div>
   <div class="grid-4" id="dash-kpis"></div>
+  <div id="dash-pendientes" style="display:none;margin-bottom:20px"></div>
   <div id="dash-objetivos" style="margin-bottom:20px"></div>
   <div class="grid-2">
     <div class="card"><div class="card-title">Gastos por categoría</div><div class="chart-container" style="height:220px"><canvas id="chart-cat"></canvas></div></div>
@@ -211,6 +212,7 @@
         <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
         <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
         <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
+        <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-pagado" checked style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado <span style="color:var(--muted);font-weight:400">(destildá si es un gasto pendiente de pago)</span></span></label></div>
         <div class="form-group" id="g-recurrente-field" style="grid-column:1/-1;display:none">
           <div style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px;padding:14px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
@@ -241,7 +243,7 @@
     </div>
     <div class="card">
       <div class="section-header"><span style="font-weight:600" id="g-table-title">Lista de gastos</span><span id="g-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th></th></tr></thead><tbody id="g-table-body"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th style="text-align:center">Pagado</th><th></th></tr></thead><tbody id="g-table-body"></tbody></table></div>
       <div id="g-empty" class="empty-state" style="display:none">No hay gastos este mes</div>
     </div>
   </div>
@@ -272,7 +274,7 @@
     <div id="h-kpis" class="grid-3" style="margin-bottom:20px"></div>
     <div class="card">
       <div class="section-header"><span style="font-weight:600" id="h-table-title">Historial</span><span id="h-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th>Acción</th></tr></thead><tbody id="h-table-body"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th style="text-align:center">Pagado</th><th>Acción</th></tr></thead><tbody id="h-table-body"></tbody></table></div>
       <div id="h-empty" class="empty-state" style="display:none">Sin gastos en el período seleccionado</div>
     </div>
   </div>
@@ -833,6 +835,12 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
 -- INSERT INTO parejas (user_a, user_b, email_a, email_b) VALUES
 --   ('UUID_LUCAS', 'UUID_NOVIA', 'email_lucas@...', 'email_novia@...');</pre>
       </details>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">✅ SQL: Estado de pago de gastos (ejecutar una sola vez)</summary>
+        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- Agrega columna para marcar si un gasto ya fue pagado o sigue pendiente.
+-- Default TRUE para no afectar retroactivamente el historial ya cargado.
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
+      </details>
     </div>
   </div>
 </div>
@@ -947,6 +955,7 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
       <div class="form-group"><label>Tarjeta</label><select id="eg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eg-notas" placeholder="Opcional"></div>
       <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
+      <div class="form-group" id="eg-pagado-field" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-pagado" style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado</span></label></div>
     </div>
     <div id="eg-recurrente-panel" style="display:none;margin:10px 0;padding:14px;background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px">
       <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:10px">🔁 Pago recurrente</div>
@@ -1777,6 +1786,7 @@ async function addGasto(){
   const fecha=document.getElementById('g-fecha').value,desc=document.getElementById('g-desc').value.trim(),monto=parseFloat(document.getElementById('g-monto').value),moneda=document.getElementById('g-moneda').value,cat=document.getElementById('g-cat').value,tipo=document.getElementById('g-tipo').value,medio=document.getElementById('g-medio').value,notas=document.getElementById('g-notas').value.trim();
   if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
   const esRecurrente = !!document.getElementById('g-recurrente')?.checked;
+  const esPagado = !!document.getElementById('g-pagado')?.checked;
   setBtnLoading('btn-add-gasto',true);
 
   if(medio==='credito'){
@@ -1792,7 +1802,7 @@ async function addGasto(){
       const fechaCuota=`${y}-${String(m+1).padStart(2,'0')}-01`;
       const esCompartido=document.getElementById('g-compartido').checked;
       const tarjetaId=document.getElementById('g-tarjeta-id')?.value||null;
-      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null});
+      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null,pagado:esPagado});
     }
     const{error}=await sb.from('gastos').insert(rows);
     setBtnLoading('btn-add-gasto',false);
@@ -1801,7 +1811,7 @@ async function addGasto(){
   } else {
     const esComp=document.getElementById('g-compartido').checked;
     const subcatId = document.getElementById('g-subcat')?.value || null;
-    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null};
+    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado};
     if(esRecurrente){row.recurrente=true;row.recurrente_activa=true;}
     const{error}=await sb.from('gastos').insert(row);
     setBtnLoading('btn-add-gasto',false);
@@ -1816,6 +1826,7 @@ function clearGastoForm(){
   document.getElementById('g-notas').value='';
   document.getElementById('g-medio').value='efectivo';
   const cb=document.getElementById('g-compartido');if(cb)cb.checked=false;
+  const pcb=document.getElementById('g-pagado');if(pcb)pcb.checked=true;
   const fields=document.getElementById('g-cuotas-fields');
   if(fields)fields.style.display='none';
   const ncuotas=document.getElementById('g-ncuotas');
@@ -1865,6 +1876,17 @@ async function confirmDeletePlan(mode){
     renderGastos();renderDashboard();renderTarjetas();showToast('Cuota eliminada');
   }
 }
+async function togglePagado(id, checked){
+  const gasto=db.gastos.find(g=>g.id===id);
+  if(!gasto)return;
+  const prev=gasto.pagado;
+  gasto.pagado=checked; // optimista
+  const{error}=await sb.from('gastos').update({pagado:checked}).eq('id',id);
+  if(error){gasto.pagado=prev;showToast(error.message,'error');renderGastos();renderHistorial();return;}
+  showToast(checked?'Marcado como pagado ✓':'Marcado como pendiente');
+  renderGastos();renderDashboard();
+  if(document.getElementById('gastos-gastos-historial')?.classList.contains('active'))renderHistorial();
+}
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const catFilter=document.getElementById('g-cat-filter')?.value||'';
@@ -1890,7 +1912,12 @@ function renderGastos(){
     const acciones=g.user_id===currentUser.id
       ?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" style="margin-right:2px" onclick="deleteGasto('${g.id}')">🗑</button>${bajaBtnMes}`
       :'<span style="font-size:11px;color:var(--muted)">ajeno</span>';
-    return`<tr><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    const estaPagado=g.pagado!==false;
+    const pendBadge=estaPagado?'':` <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>`;
+    const pagadoCell=g.user_id===currentUser.id
+      ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?'Marcar como pendiente':'Marcar como pagado'}">`
+      :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -2250,6 +2277,10 @@ function abrirEditGasto(id) {
   document.getElementById('eg-medio').value = g.medio || 'efectivo';
   document.getElementById('eg-notas').value = g.notas || '';
   document.getElementById('eg-compartido').checked = !!g.es_compartido;
+  document.getElementById('eg-pagado').checked = g.pagado !== false;
+  // Si es parte de un plan de cuotas, el pago se maneja cuota por cuota desde la lista, no en bloque
+  const egPagadoField = document.getElementById('eg-pagado-field');
+  if (egPagadoField) egPagadoField.style.display = g.plan_id ? 'none' : '';
   // Fill categorias
   const catSel = document.getElementById('eg-cat');
   catSel.innerHTML = db.categorias.map(cat => `<option value="${cat.name}" ${cat.name===g.cat?'selected':''}>${cat.emoji} ${cat.name}</option>`).join('');
@@ -2342,7 +2373,8 @@ async function saveEditGasto() {
     if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
   } else {
     const g = db.gastos.find(x => x.id === id);
-    const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido };
+    const egPagado = document.getElementById('eg-pagado')?.checked ?? true;
+    const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado };
     // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
     if (true || (g && g.recurrente)) {
       const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
@@ -2491,13 +2523,19 @@ function renderHistorial() {
     const accion = esCreditoSinPlan
       ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="abrirConvertirTC('${g.id}')">✏️ Cuotas</button>`
       : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</span>` : `<button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`);
-    return `<tr>
+    const estaPagadoH=g.pagado!==false;
+    const pendBadgeH=estaPagadoH?'':` <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>`;
+    const pagadoCellH=g.user_id===currentUser.id
+      ?`<input type="checkbox" ${estaPagadoH?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagadoH?'Marcar como pendiente':'Marcar como pagado'}">`
+      :`<span style="font-size:11px;color:var(--muted)">${estaPagadoH?'✅':'⏳'}</span>`;
+    return `<tr style="${estaPagadoH?'':'opacity:0.85'}">
       <td style="color:var(--muted)">${g.fecha}</td>
-      <td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${(g.desc||g.descripcion||'').includes('(parte grupal')?' <span style="font-size:11px;color:var(--warn)">🤝</span>':''}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}</td>
+      <td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${(g.desc||g.descripcion||'').includes('(parte grupal')?' <span style="font-size:11px;color:var(--warn)">🤝</span>':''}${pendBadgeH}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}</td>
       <td><span class="tag">${cat.emoji} ${cat.name}</span></td>
       <td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td>
       <td style="color:var(--muted)">${g.medio}</td>
       <td class="amount-negative" style="font-weight:600;white-space:nowrap">${fmtARS(montoEf)}</td>
+      <td style="text-align:center">${pagadoCellH}</td>
       <td>${accion}</td>
     </tr>`;
   }).join('');
@@ -2987,6 +3025,28 @@ function renderDashboard(){
     ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}</div>`
     :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}</div>`;
   document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
+  // Pendientes de pago del mes seleccionado
+  const pendientes=gastos.filter(g=>g.pagado===false);
+  const totalPendiente=pendientes.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
+  const pendDiv=document.getElementById('dash-pendientes');
+  if(pendientes.length>0){
+    pendDiv.style.display='block';
+    pendDiv.innerHTML=`<div class="card" style="background:rgba(255,179,71,0.08);border-color:rgba(255,179,71,0.3);cursor:pointer" onclick="irAGastosMes(${month},${year})" title="Ver gastos del mes">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">⏳</span>
+          <div>
+            <div style="font-weight:600;color:var(--warn)">Pendientes de pago</div>
+            <div style="font-size:13px;color:var(--muted)">${pendientes.length} gasto${pendientes.length!==1?'s':''} sin marcar como pagado${pendientes.length!==1?'s':''}</div>
+          </div>
+        </div>
+        <div style="font-weight:700;color:var(--warn);font-size:18px">${fmtARS(totalPendiente)}</div>
+      </div>
+    </div>`;
+  } else {
+    pendDiv.style.display='none';
+    pendDiv.innerHTML='';
+  }
   renderObjetivosDashboard(tI, tG, bal);
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
