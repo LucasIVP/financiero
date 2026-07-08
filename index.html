@@ -555,7 +555,7 @@
       <div class="section-header"><span style="font-weight:600">Gastos marcados como compartidos</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagado</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
           <tbody id="comp-table-body"></tbody>
         </table>
       </div>
@@ -1897,14 +1897,21 @@ async function confirmDeletePlan(mode){
 }
 async function togglePagado(id, checked){
   const gasto=db.gastos.find(g=>g.id===id);
-  if(!gasto)return;
-  const prev=gasto.pagado;
-  gasto.pagado=checked; // optimista
+  const gastoComp=dbCompartido?.gastos?.find(g=>g.id===id);
+  if(!gasto && !gastoComp)return;
+  const prev=gasto?gasto.pagado:gastoComp.pagado;
+  if(gasto)gasto.pagado=checked; // optimista
+  if(gastoComp)gastoComp.pagado=checked;
   const{error}=await sb.from('gastos').update({pagado:checked}).eq('id',id);
-  if(error){gasto.pagado=prev;showToast(error.message,'error');renderGastos();renderHistorial();return;}
+  if(error){
+    if(gasto)gasto.pagado=prev;
+    if(gastoComp)gastoComp.pagado=prev;
+    showToast(error.message,'error');renderGastos();renderHistorial();renderCompartido();return;
+  }
   showToast(checked?'Marcado como pagado ✓':'Marcado como pendiente');
   renderGastos();renderDashboard();
   if(document.getElementById('gastos-gastos-historial')?.classList.contains('active'))renderHistorial();
+  if(document.getElementById('page-compartido')?.classList.contains('active'))renderCompartido();
 }
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
@@ -3256,11 +3263,19 @@ function renderCompartido() {
       const saldoTxt = Math.abs(saldoYo) < 1 ? '<span style="color:var(--muted)">Saldado</span>'
         : saldoYo > 0 ? `<span style="color:var(--red)">Debés ${fmtARS(saldoYo)}</span>`
         : `<span style="color:var(--green)">Te debe ${fmtARS(-saldoYo)}</span>`;
-      return `<tr>
+      const estaPagado = g.pagado !== false;
+      // Todo lo que aparece acá es es_compartido=true, así que cualquiera de los dos puede tildar/destildar
+      // (la política RLS de gastos_update ya lo permite). Excepción: filas virtuales de recurrentes
+      // todavía no tienen fila real en gastos, así que no se pueden togglear hasta el mes en que se generen.
+      const pagadoCellComp = g._virtual
+        ? `<span style="font-size:11px;color:var(--muted)" title="Todavía no se generó la fila real de este mes">—</span>`
+        : `<input type="checkbox" ${estaPagado ? 'checked' : ''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado ? 'Marcar como pendiente' : 'Marcar como pagado'}">`;
+      return `<tr style="${estaPagado ? '' : 'opacity:0.85'}">
         <td style="color:var(--muted)">${g.fecha}</td>
-        <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
+        <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}${!estaPagado ? ' <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
         <td><span class="tag">${catObj.emoji} ${g.cat || '—'}</span></td>
         <td>${g.moneda === 'USD' ? fmtUSD(g.monto) : fmtARS(g.monto)}</td>
+        <td style="text-align:center">${pagadoCellComp}</td>
         <td style="font-size:12px;color:var(--muted)">${esMio ? 'Yo' : 'Pareja'}</td>
         <td style="color:var(--accent)">${fmtARS(montoARS * propYo)}</td>
         <td style="color:var(--accent2)">${fmtARS(montoARS * propOtro)}</td>
