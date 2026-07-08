@@ -211,7 +211,11 @@
         <div class="form-group"><label>Medio de pago</label><select id="g-medio" onchange="toggleCuotasFields('g')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
         <div class="form-group" id="g-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="g-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
         <div class="form-group"><label>Notas</label><input type="text" id="g-notas" placeholder="Opcional"></div>
-        <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
+        <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-compartido" style="width:16px;height:16px;accent-color:var(--accent2)" onchange="toggleAportePareja('g')"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido (aparece en sección Compartido)</span></label></div>
+        <div class="form-group" id="g-aporte-pareja-field" style="display:none;grid-column:1/-1">
+          <label>¿Puso una parte tu pareja al momento de pagar? <span style="color:var(--muted);font-weight:400">(opcional — dejalo vacío si vos pagaste todo)</span></label>
+          <input type="number" id="g-aporte-pareja" placeholder="Ej: 20000 (monto que puso tu pareja)" min="0">
+        </div>
         <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-pagado" checked style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado <span style="color:var(--muted);font-weight:400">(destildá si es un gasto pendiente de pago)</span></span></label></div>
         <div class="form-group" id="g-recurrente-field" style="grid-column:1/-1;display:none">
           <div style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px;padding:14px">
@@ -551,7 +555,7 @@
       <div class="section-header"><span style="font-weight:600">Gastos marcados como compartidos</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Quién</th><th>Tu parte</th><th>Parte pareja</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
           <tbody id="comp-table-body"></tbody>
         </table>
       </div>
@@ -614,14 +618,15 @@
       </div>
       <div style="margin:14px 0 10px;font-weight:600;font-size:13px">Participantes</div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">Yo siempre estoy incluido · Las partes se dividen en partes iguales</div>
+        <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">Yo siempre estoy incluido · Las partes se dividen en partes iguales (podés ajustar cuánto puso cada uno abajo)</div>
         <div id="gg-participantes-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="gg-nueva-persona" placeholder="Nombre del participante" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="gg-nueva-persona" placeholder="Nombre del participante" style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
           <select id="gg-nuevo-rol" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
             <option value="me_debe">Me debe</option>
             <option value="le_debo">Le debo</option>
           </select>
+          <input type="number" id="gg-nuevo-aporte" placeholder="Ya puso (opcional)" min="0" title="Cuánto puso esta persona al momento de pagar, si ya puso algo" style="width:140px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
           <button class="btn btn-ghost" onclick="addGGParticipante()" style="white-space:nowrap">+ Agregar</button>
         </div>
         <div id="gg-preview" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>
@@ -954,7 +959,11 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
       <div class="form-group"><label>Medio de pago</label><select id="eg-medio" onchange="toggleEditConvertir()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group"><label>Tarjeta</label><select id="eg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eg-notas" placeholder="Opcional"></div>
-      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
+      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)" onchange="toggleAportePareja('eg')"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
+      <div class="form-group" id="eg-aporte-pareja-field" style="display:none;grid-column:1/-1">
+        <label>¿Puso una parte tu pareja al momento de pagar? <span style="color:var(--muted);font-weight:400">(opcional — vacío = vos pagaste todo)</span></label>
+        <input type="number" id="eg-aporte-pareja" placeholder="Ej: 20000" min="0">
+      </div>
       <div class="form-group" id="eg-pagado-field" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-pagado" style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado</span></label></div>
     </div>
     <div id="eg-recurrente-panel" style="display:none;margin:10px 0;padding:14px;background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px">
@@ -1205,12 +1214,13 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
     <div style="font-weight:600;font-size:13px;margin-bottom:10px">Participantes actuales</div>
     <div id="eg-grupal-lista" style="margin-bottom:16px"></div>
     <div style="font-weight:600;font-size:13px;margin-bottom:10px">Agregar participante</div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <input type="text" id="eg-nueva-persona" placeholder="Nombre" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <input type="text" id="eg-nueva-persona" placeholder="Nombre" style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
       <select id="eg-nuevo-rol" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
         <option value="me_debe">Me debe</option>
         <option value="le_debo">Le debo</option>
       </select>
+      <input type="number" id="eg-nuevo-aporte" placeholder="Ya puso (opcional)" min="0" style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
       <button class="btn btn-ghost" onclick="agregarParticipanteEdit()">+ Agregar</button>
     </div>
     <div style="display:flex;justify-content:flex-end">
@@ -1523,6 +1533,12 @@ function toggleRecurrenteOpts(prefix) {
   if (opts) opts.style.display = cb?.checked ? 'block' : 'none';
 }
 
+function toggleAportePareja(prefix) {
+  const cb = document.getElementById(prefix + '-compartido');
+  const field = document.getElementById(prefix + '-aporte-pareja-field');
+  if (field) field.style.display = cb?.checked ? 'block' : 'none';
+}
+
 // Obtener suscripciones (solo para el tab 🔁 Suscripciones)
 function getSuscripciones() {
   const todos = (db.gastos || []).filter(g => g.recurrente === true && g.cat === 'Suscripciones' && g.user_id === currentUser.id);
@@ -1787,6 +1803,7 @@ async function addGasto(){
   if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
   const esRecurrente = !!document.getElementById('g-recurrente')?.checked;
   const esPagado = !!document.getElementById('g-pagado')?.checked;
+  const aportePareja = document.getElementById('g-compartido')?.checked ? (parseFloat(document.getElementById('g-aporte-pareja')?.value) || null) : null;
   setBtnLoading('btn-add-gasto',true);
 
   if(medio==='credito'){
@@ -1811,7 +1828,7 @@ async function addGasto(){
   } else {
     const esComp=document.getElementById('g-compartido').checked;
     const subcatId = document.getElementById('g-subcat')?.value || null;
-    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado};
+    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado,aporte_pareja:esComp?aportePareja:null};
     if(esRecurrente){row.recurrente=true;row.recurrente_activa=true;}
     const{error}=await sb.from('gastos').insert(row);
     setBtnLoading('btn-add-gasto',false);
@@ -1827,6 +1844,8 @@ function clearGastoForm(){
   document.getElementById('g-medio').value='efectivo';
   const cb=document.getElementById('g-compartido');if(cb)cb.checked=false;
   const pcb=document.getElementById('g-pagado');if(pcb)pcb.checked=true;
+  const aportEl=document.getElementById('g-aporte-pareja');if(aportEl)aportEl.value='';
+  toggleAportePareja('g');
   const fields=document.getElementById('g-cuotas-fields');
   if(fields)fields.style.display='none';
   const ncuotas=document.getElementById('g-ncuotas');
@@ -1914,7 +1933,7 @@ function renderGastos(){
       :'<span style="font-size:11px;color:var(--muted)">ajeno</span>';
     const estaPagado=g.pagado!==false;
     const pendBadge=estaPagado?'':` <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>`;
-    const pagadoCell=g.user_id===currentUser.id
+    const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?'Marcar como pendiente':'Marcar como pagado'}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
     return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
@@ -2278,9 +2297,13 @@ function abrirEditGasto(id) {
   document.getElementById('eg-notas').value = g.notas || '';
   document.getElementById('eg-compartido').checked = !!g.es_compartido;
   document.getElementById('eg-pagado').checked = g.pagado !== false;
+  document.getElementById('eg-aporte-pareja').value = g.aporte_pareja ?? '';
+  toggleAportePareja('eg');
   // Si es parte de un plan de cuotas, el pago se maneja cuota por cuota desde la lista, no en bloque
   const egPagadoField = document.getElementById('eg-pagado-field');
   if (egPagadoField) egPagadoField.style.display = g.plan_id ? 'none' : '';
+  const egAporteField = document.getElementById('eg-aporte-pareja-field');
+  if (egAporteField && g.plan_id) egAporteField.style.display = 'none';
   // Fill categorias
   const catSel = document.getElementById('eg-cat');
   catSel.innerHTML = db.categorias.map(cat => `<option value="${cat.name}" ${cat.name===g.cat?'selected':''}>${cat.emoji} ${cat.name}</option>`).join('');
@@ -2374,7 +2397,8 @@ async function saveEditGasto() {
   } else {
     const g = db.gastos.find(x => x.id === id);
     const egPagado = document.getElementById('eg-pagado')?.checked ?? true;
-    const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado };
+    const egAportePareja = esCompartido ? (parseFloat(document.getElementById('eg-aporte-pareja')?.value) || null) : null;
+    const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado, aporte_pareja: egAportePareja };
     // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
     if (true || (g && g.recurrente)) {
       const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
@@ -2525,7 +2549,7 @@ function renderHistorial() {
       : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</span>` : `<button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`);
     const estaPagadoH=g.pagado!==false;
     const pendBadgeH=estaPagadoH?'':` <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>`;
-    const pagadoCellH=g.user_id===currentUser.id
+    const pagadoCellH=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagadoH?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagadoH?'Marcar como pendiente':'Marcar como pagado'}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagadoH?'✅':'⏳'}</span>`;
     return `<tr style="${estaPagadoH?'':'opacity:0.85'}">
@@ -3199,10 +3223,26 @@ function renderCompartido() {
 
   const totalComp = gastosMes.reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
 
+  // Saldo real por gasto: cuánto aportó cada uno vs. cuánto le correspondía según el proporcional de ingresos.
+  // Si aporte_pareja es null, se asume que el dueño del gasto pagó el 100% (comportamiento anterior).
+  const gastosConSaldo = gastosMes.map(g => {
+    const montoARS = toARS(g.monto, g.moneda);
+    const esMio = g.user_id === currentUser.id;
+    const aportePartnerARS = (g.aporte_pareja != null) ? toARS(g.aporte_pareja, g.moneda) : null;
+    const aporteDuenoARS = aportePartnerARS != null ? (montoARS - aportePartnerARS) : montoARS;
+    const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
+    const parejaAporte = esMio ? (aportePartnerARS ?? 0) : aporteDuenoARS;
+    const yoCorresponde = montoARS * propYo;
+    const saldoYo = yoCorresponde - yoAporte; // >0: todavía debo esta parte · <0: mi pareja me debe
+    return { g, montoARS, esMio, yoAporte, parejaAporte, saldoYo, tieneAporteCustom: aportePartnerARS != null };
+  });
+  const balanceNeto = gastosConSaldo.reduce((s, x) => s + x.saldoYo, 0);
+
   document.getElementById('comp-kpis').innerHTML = `
     <div class="card"><div class="card-title">Total compartido del mes</div><div class="card-value amount-negative">${fmtARS(totalComp)}</div><div class="card-sub">${gastosMes.length} gasto${gastosMes.length !== 1 ? 's' : ''}</div></div>
     <div class="card"><div class="card-title">Mi parte (${pctYo}%)</div><div class="card-value" style="color:var(--accent)">${fmtARS(totalComp * propYo)}</div><div class="card-sub">Proporcional a tu ingreso</div></div>
-    <div class="card"><div class="card-title">Parte pareja (${pctOtro}%)</div><div class="card-value" style="color:var(--accent2)">${fmtARS(totalComp * propOtro)}</div><div class="card-sub">Proporcional a su ingreso</div></div>`;
+    <div class="card"><div class="card-title">Parte pareja (${pctOtro}%)</div><div class="card-value" style="color:var(--accent2)">${fmtARS(totalComp * propOtro)}</div><div class="card-sub">Proporcional a su ingreso</div></div>
+    <div class="card"><div class="card-title">Balance del mes</div><div class="card-value" style="color:${Math.abs(balanceNeto)<1?'var(--muted)':(balanceNeto>0?'var(--red)':'var(--green)')}">${Math.abs(balanceNeto)<1?'Saldado':fmtARS(Math.abs(balanceNeto))}</div><div class="card-sub">${Math.abs(balanceNeto)<1?'Nadie le debe a nadie':(balanceNeto>0?'Le debés a tu pareja':'Tu pareja te debe')}</div></div>`;
 
   document.getElementById('comp-total-badge').textContent = gastosMes.length > 0 ? `Total: ${fmtARS(totalComp)}` : '';
 
@@ -3211,18 +3251,20 @@ function renderCompartido() {
   if (gastosMes.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; }
   else {
     empty.style.display = 'none';
-    tbody.innerHTML = gastosMes.map(g => {
-      const montoARS = toARS(g.monto, g.moneda);
-      const esMio = g.user_id === currentUser.id;
+    tbody.innerHTML = gastosConSaldo.map(({ g, montoARS, esMio, saldoYo, tieneAporteCustom }) => {
       const catObj = db.categorias.find(c => c.name === g.cat) || { emoji: '📄' };
+      const saldoTxt = Math.abs(saldoYo) < 1 ? '<span style="color:var(--muted)">Saldado</span>'
+        : saldoYo > 0 ? `<span style="color:var(--red)">Debés ${fmtARS(saldoYo)}</span>`
+        : `<span style="color:var(--green)">Te debe ${fmtARS(-saldoYo)}</span>`;
       return `<tr>
         <td style="color:var(--muted)">${g.fecha}</td>
-        <td><div style="font-weight:500">${g.desc || g.descripcion}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
+        <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
         <td><span class="tag">${catObj.emoji} ${g.cat || '—'}</span></td>
         <td>${g.moneda === 'USD' ? fmtUSD(g.monto) : fmtARS(g.monto)}</td>
         <td style="font-size:12px;color:var(--muted)">${esMio ? 'Yo' : 'Pareja'}</td>
         <td style="color:var(--accent)">${fmtARS(montoARS * propYo)}</td>
         <td style="color:var(--accent2)">${fmtARS(montoARS * propOtro)}</td>
+        <td style="font-size:12px;font-weight:600">${saldoTxt}</td>
       </tr>`;
     }).join('');
   }
@@ -3298,7 +3340,7 @@ function renderVaquita() {
 // GASTOS GRUPALES
 // ============================================================
 
-let ggParticipantes = []; // [{nombre, rol}] — yo no está acá, se agrega al guardar
+let ggParticipantes = []; // [{nombre, rol, aportado}] — yo no está acá, se agrega al guardar
 
 function updateGGPreview() {
   const monto = parseFloat(document.getElementById('gg-monto').value) || 0;
@@ -3317,24 +3359,30 @@ function renderGGParticipantesList() {
   const el = document.getElementById('gg-participantes-list');
   if (!el) return;
   if (ggParticipantes.length === 0) { el.innerHTML = '<div style="font-size:13px;color:var(--muted)">Agregá participantes además de vos.</div>'; return; }
-  el.innerHTML = ggParticipantes.map((p, i) => `
+  el.innerHTML = ggParticipantes.map((p, i) => {
+    const aportado = p.aportado || 0;
+    const saldo = parte - aportado;
+    return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border-radius:8px">
       <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}</span>
       <span style="font-size:12px;color:${p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.rol==='me_debe'?'Me debe':'Le debo'}</span>
-      ${monto > 0 ? `<span style="font-size:13px;font-weight:600;min-width:80px;text-align:right">${fmtARS(parte)}</span>` : ''}
+      ${monto > 0 ? `<span style="font-size:13px;font-weight:600;min-width:80px;text-align:right" title="Le corresponde ${fmtARS(parte)}${aportado>0?` · Ya puso ${fmtARS(aportado)}`:''}">Saldo: ${fmtARS(saldo)}</span>` : ''}
       <button class="del-btn" onclick="removeGGParticipante(${i})">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function addGGParticipante() {
   const nombre = document.getElementById('gg-nueva-persona').value.trim();
   const rol = document.getElementById('gg-nuevo-rol').value;
+  const aportado = parseFloat(document.getElementById('gg-nuevo-aporte')?.value) || 0;
   if (!nombre) { showToast('Ingresá un nombre', 'error'); return; }
   if (ggParticipantes.find(p => p.nombre.toLowerCase() === nombre.toLowerCase())) {
     showToast('Ya está en la lista', 'error'); return;
   }
-  ggParticipantes.push({ nombre, rol });
+  ggParticipantes.push({ nombre, rol, aportado });
   document.getElementById('gg-nueva-persona').value = '';
+  const aporteEl = document.getElementById('gg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
   updateGGPreview();
 }
 
@@ -3345,7 +3393,7 @@ function removeGGParticipante(idx) {
 
 function clearGGForm() {
   ggParticipantes = [];
-  ['gg-desc','gg-monto','gg-notas','gg-nueva-persona'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  ['gg-desc','gg-monto','gg-notas','gg-nueva-persona','gg-nuevo-aporte'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('gg-medio').value = 'efectivo';
   document.getElementById('gg-moneda').value = 'ARS';
   const fields = document.getElementById('gg-cuotas-fields'); if(fields) fields.style.display='none';
@@ -3430,18 +3478,33 @@ function renderEditGrupalLista(grupalId) {
   const parteMonto = g ? Math.round(g.monto / nTotal * 100) / 100 : 0;
 
   document.getElementById('eg-grupal-lista').innerHTML = parts.map(p => `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px">
-      <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}</span>
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
+      <span style="flex:1;font-size:13px;font-weight:500;min-width:80px">${p.nombre}</span>
       <span style="font-size:12px;color:${p.es_yo?'var(--accent)':p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.es_yo?'Yo':p.rol==='me_debe'?'Me debe':'Le debo'}</span>
       <span style="font-size:13px;font-weight:600;min-width:80px;text-align:right">${g?.moneda==='USD'?fmtUSD(p.monto_parte):fmtARS(p.monto_parte)}</span>
+      ${!p.es_yo ? `<input type="number" min="0" value="${p.monto_aportado||0}" title="Cuánto ya puso" onchange="actualizarAporteParticipante('${p.id}', this.value)" style="width:100px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;outline:none">` : ''}
       ${!p.es_yo ? `<button class="del-btn" onclick="quitarParticipanteEdit('${p.id}','${grupalId}')">✕</button>` : ''}
     </div>`).join('');
+}
+
+async function actualizarAporteParticipante(partId, value) {
+  const aportado = parseFloat(value) || 0;
+  const p = dbCompartido.grupalesParticipantes.find(x => x.id === partId);
+  if (!p) return;
+  const nuevoPagado = aportado >= (p.monto_parte || 0);
+  const { error } = await sb.from('gastos_grupales_participantes').update({ monto_aportado: aportado, pagado: nuevoPagado }).eq('id', partId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  p.monto_aportado = aportado;
+  p.pagado = nuevoPagado;
+  renderGrupales();
+  showToast('Aporte actualizado ✓');
 }
 
 async function agregarParticipanteEdit() {
   const grupalId = document.getElementById('eg-grupal-id').value;
   const nombre = document.getElementById('eg-nueva-persona').value.trim();
   const rol = document.getElementById('eg-nuevo-rol').value;
+  const aportado = parseFloat(document.getElementById('eg-nuevo-aporte')?.value) || 0;
   if (!nombre) { showToast('Ingresá un nombre', 'error'); return; }
 
   const g = dbCompartido.grupales.find(x => x.id === grupalId);
@@ -3463,12 +3526,13 @@ async function agregarParticipanteEdit() {
 
   // Insert new participant
   const { data: newP, error } = await sb.from('gastos_grupales_participantes')
-    .insert({ gasto_grupal_id: grupalId, user_id: currentUser.id, nombre, es_yo: false, rol, monto_parte: parteMonto, moneda: g.moneda, pagado: false })
+    .insert({ gasto_grupal_id: grupalId, user_id: currentUser.id, nombre, es_yo: false, rol, monto_parte: parteMonto, moneda: g.moneda, pagado: aportado >= parteMonto, monto_aportado: aportado })
     .select().single();
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
 
   dbCompartido.grupalesParticipantes.push(newP);
   document.getElementById('eg-nueva-persona').value = '';
+  const aporteEl = document.getElementById('eg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
   renderEditGrupalLista(grupalId);
   renderGrupales();
   showToast('Participante agregado ✓');
@@ -3527,10 +3591,10 @@ async function addGastoGrupal() {
 
   // Insert participantes: yo + los demás
   const rows = [
-    { gasto_grupal_id: ggData.id, user_id: currentUser.id, nombre: 'Yo', es_yo: true, rol: 'yo', monto_parte: parteMonto, moneda, pagado: true },
+    { gasto_grupal_id: ggData.id, user_id: currentUser.id, nombre: 'Yo', es_yo: true, rol: 'yo', monto_parte: parteMonto, moneda, pagado: true, monto_aportado: parteMonto },
     ...ggParticipantes.map(p => ({
       gasto_grupal_id: ggData.id, user_id: currentUser.id, nombre: p.nombre,
-      es_yo: false, rol: p.rol, monto_parte: parteMonto, moneda, pagado: false
+      es_yo: false, rol: p.rol, monto_parte: parteMonto, moneda, pagado: (p.aportado||0) >= parteMonto, monto_aportado: p.aportado || 0
     }))
   ];
 
@@ -3587,11 +3651,12 @@ async function addGastoGrupal() {
 
 async function pagarGrupal(participanteId) {
   const hoy = new Date().toISOString().slice(0, 10);
+  const p0 = dbCompartido.grupalesParticipantes.find(x => x.id === participanteId);
   const { error } = await sb.from('gastos_grupales_participantes')
-    .update({ pagado: true, fecha_pago: hoy }).eq('id', participanteId);
+    .update({ pagado: true, fecha_pago: hoy, monto_aportado: p0?.monto_parte || 0 }).eq('id', participanteId);
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   const p = dbCompartido.grupalesParticipantes.find(x => x.id === participanteId);
-  if (p) { p.pagado = true; p.fecha_pago = hoy; }
+  if (p) { p.pagado = true; p.fecha_pago = hoy; p.monto_aportado = p.monto_parte || 0; }
   renderGrupales();
   showToast('Pago registrado ✓');
 }
@@ -3621,8 +3686,10 @@ function renderGrupales() {
   // KPIs
   const pendientesMe = partsAll.filter(p => !p.pagado && p.rol === 'me_debe');
   const pendientesLe = partsAll.filter(p => !p.pagado && p.rol === 'le_debo');
-  const totalMeDeben = pendientesMe.reduce((s,p) => s + toARS(p.monto_parte, p.moneda), 0);
-  const totalLeDebo = pendientesLe.reduce((s,p) => s + toARS(p.monto_parte, p.moneda), 0);
+  // Saldo pendiente = lo que le corresponde menos lo que ya aportó (si no aportó nada, es el total de su parte, como antes)
+  const saldoPend = p => Math.max(0, toARS(p.monto_parte, p.moneda) - toARS(p.monto_aportado || 0, p.moneda));
+  const totalMeDeben = pendientesMe.reduce((s,p) => s + saldoPend(p), 0);
+  const totalLeDebo = pendientesLe.reduce((s,p) => s + saldoPend(p), 0);
 
   document.getElementById('gg-kpis').innerHTML = `
     <div class="card"><div class="card-title">Me deben</div><div class="card-value amount-positive">${fmtARS(totalMeDeben)}</div><div class="card-sub">${pendientesMe.length} pago${pendientesMe.length!==1?'s':''} pendiente${pendientesMe.length!==1?'s':''}</div></div>
@@ -3642,7 +3709,8 @@ function renderGrupales() {
     const [y, m] = ym.split('-');
     const mesLabel = ym !== '?' ? `${MONTHS[parseInt(m)-1]} ${y}` : '?';
     if (!porPersona[p.nombre]) porPersona[p.nombre] = { meDeben: 0, leDebo: 0, meses: {} };
-    const monto = toARS(p.monto_parte, p.moneda);
+    const saldoNativo = Math.max(0, (p.monto_parte||0) - (p.monto_aportado||0));
+    const monto = toARS(saldoNativo, p.moneda);
     if (p.rol === 'me_debe') {
       porPersona[p.nombre].meDeben += monto;
       if (!porPersona[p.nombre].meses[mesLabel]) porPersona[p.nombre].meses[mesLabel] = { meDeben: 0, leDebo: 0 };
@@ -3695,19 +3763,25 @@ function renderGrupales() {
     const pendientes = otros.filter(p => !p.pagado);
     const allDone = pendientes.length === 0;
 
-    const otrosHTML = otros.map(p => `
+    const otrosHTML = otros.map(p => {
+      const aportado = p.monto_aportado || 0;
+      const saldo = Math.max(0, (p.monto_parte||0) - aportado);
+      const fmtMon = v => p.moneda==='USD' ? fmtUSD(v) : fmtARS(v);
+      return `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1">
           <span style="font-size:13px;font-weight:500">${p.nombre}</span>
           <span style="margin-left:8px;font-size:12px;color:${p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.rol==='me_debe'?'me debe':'le debo'}</span>
+          ${aportado>0 && !p.pagado ? `<div style="font-size:11px;color:var(--muted)">Le corresponde ${fmtMon(p.monto_parte)} · ya puso ${fmtMon(aportado)}</div>` : ''}
         </div>
-        <div style="font-weight:600;font-size:13px;min-width:90px;text-align:right">${p.moneda==='USD'?fmtUSD(p.monto_parte):fmtARS(p.monto_parte)}</div>
+        <div style="font-weight:600;font-size:13px;min-width:90px;text-align:right">${p.pagado ? fmtMon(p.monto_parte) : fmtMon(saldo)}</div>
         <div style="min-width:120px;text-align:right">
           ${p.pagado
             ? `<span style="font-size:12px;color:var(--green)">✓ ${p.fecha_pago||''}</span>`
             : `<button class="btn btn-success" style="padding:4px 10px;font-size:12px" onclick="pagarGrupal('${p.id}')">${p.rol==='me_debe'?'✓ Cobrado':'✓ Pagado'}</button>`}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     return `<div class="card" style="margin-bottom:16px${allDone?';opacity:0.6':''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
