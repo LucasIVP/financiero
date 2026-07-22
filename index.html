@@ -420,6 +420,13 @@
       <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
         <div class="form-group"><label>Descripción</label><input type="text" id="pt-desc" placeholder="Ej: Notebook Samsung"></div>
         <div class="form-group"><label>Persona</label><input type="text" id="pt-persona" placeholder="Ej: Mamá"></div>
+        <div class="form-group" id="pt-vincular-wrap" style="display:none;grid-column:1/-1">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="pt-vincular-pareja" onchange="onTogglePTVincular()" style="width:16px;height:16px;accent-color:var(--accent)">
+            <span style="font-weight:600">💑 Vincular con mi pareja <span id="pt-vincular-email" style="color:var(--muted);font-weight:400"></span></span>
+          </label>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Si lo tildás, cada cuota le va a aparecer como gasto pendiente de pago en su propia cuenta, y ella va a poder marcarla "pagado" desde ahí.</div>
+        </div>
         <div class="form-group"><label>Monto total</label><input type="number" id="pt-monto" placeholder="0" oninput="updatePTPreview()"></div>
         <div class="form-group"><label>Moneda</label><select id="pt-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
         <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="pt-ncuotas" placeholder="12" min="1" max="60" oninput="updatePTPreview()"></div>
@@ -845,6 +852,95 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
         <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- Agrega columna para marcar si un gasto ya fue pagado o sigue pendiente.
 -- Default TRUE para no afectar retroactivamente el historial ya cargado.
 ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
+      </details>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">💸 SQL: Préstamos reflejados en la cuenta de la pareja (ejecutar una sola vez)</summary>
+        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- 1) Vincular el préstamo a un usuario real de la app (tu pareja), sin perder el campo de texto libre
+ALTER TABLE prestamos_tc ADD COLUMN IF NOT EXISTS persona_user_id uuid REFERENCES auth.users(id);
+ALTER TABLE prestamos_cuotas ADD COLUMN IF NOT EXISTS gasto_id uuid REFERENCES gastos(id) ON DELETE SET NULL;
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS origen_prestamo_cuota_id uuid REFERENCES prestamos_cuotas(id) ON DELETE SET NULL;
+
+-- 2) La persona vinculada puede VER el préstamo y sus cuotas (no editarlas)
+DO $$
+DECLARE pol record;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'prestamos_tc' LOOP
+    EXECUTE format('DROP POLICY %I ON prestamos_tc', pol.policyname);
+  END LOOP;
+  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'prestamos_cuotas' LOOP
+    EXECUTE format('DROP POLICY %I ON prestamos_cuotas', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "prestamos_tc_select" ON prestamos_tc FOR SELECT
+  USING (auth.uid() = user_id OR auth.uid() = persona_user_id);
+CREATE POLICY "prestamos_tc_insert" ON prestamos_tc FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "prestamos_tc_update" ON prestamos_tc FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "prestamos_tc_delete" ON prestamos_tc FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY "prestamos_cuotas_select" ON prestamos_cuotas FOR SELECT
+  USING (auth.uid() = user_id OR EXISTS (
+    SELECT 1 FROM prestamos_tc p WHERE p.id = prestamos_cuotas.prestamo_id AND p.persona_user_id = auth.uid()
+  ));
+CREATE POLICY "prestamos_cuotas_insert" ON prestamos_cuotas FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "prestamos_cuotas_update" ON prestamos_cuotas FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "prestamos_cuotas_delete" ON prestamos_cuotas FOR DELETE USING (auth.uid() = user_id);
+
+-- 3) Función: crea, desde tu cuenta, el gasto "espejo" en la cuenta de tu pareja
+-- (si ya habías corrido una versión anterior de esta función con 7 parámetros, esto la reemplaza limpiamente)
+DROP FUNCTION IF EXISTS crear_gasto_desde_prestamo(uuid, uuid, text, numeric, text, date, text);
+
+CREATE OR REPLACE FUNCTION crear_gasto_desde_prestamo(
+  p_cuota_id uuid, p_persona_user_id uuid, p_descripcion text,
+  p_monto numeric, p_moneda text, p_fecha date, p_cat text, p_pagado boolean DEFAULT false
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_gasto_id uuid;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = p_persona_user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = p_persona_user_id)
+  ) THEN
+    RAISE EXCEPTION 'No estás vinculado con ese usuario';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM prestamos_cuotas WHERE id = p_cuota_id AND user_id = auth.uid()) THEN
+    RAISE EXCEPTION 'La cuota no te pertenece';
+  END IF;
+
+  INSERT INTO gastos (user_id, fecha, descripcion, monto, moneda, cat, tipo, medio, pagado, origen_prestamo_cuota_id)
+  VALUES (p_persona_user_id, p_fecha, p_descripcion, p_monto, p_moneda, p_cat, 'regular', 'Tarjeta prestada', p_pagado, p_cuota_id)
+  RETURNING id INTO v_gasto_id;
+
+  UPDATE prestamos_cuotas SET gasto_id = v_gasto_id WHERE id = p_cuota_id;
+  RETURN v_gasto_id;
+END; $$;
+
+-- 4) Función: cuando VOS marcás una cuota como "✓ Cobrar", se marca pagado el gasto de tu pareja
+CREATE OR REPLACE FUNCTION sync_pagado_desde_cobro(p_cuota_id uuid, p_cobrada boolean)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_gasto_id uuid;
+BEGIN
+  SELECT gasto_id INTO v_gasto_id FROM prestamos_cuotas WHERE id = p_cuota_id AND user_id = auth.uid();
+  IF v_gasto_id IS NOT NULL THEN
+    UPDATE gastos SET pagado = p_cobrada WHERE id = v_gasto_id;
+  END IF;
+END; $$;
+
+-- 5) Función: cuando TU PAREJA marca su gasto como pagado, se marca "cobrada" tu cuota
+CREATE OR REPLACE FUNCTION sync_cobro_desde_pagado(p_gasto_id uuid, p_pagado boolean)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_cuota_id uuid;
+BEGIN
+  SELECT origen_prestamo_cuota_id INTO v_cuota_id FROM gastos WHERE id = p_gasto_id AND user_id = auth.uid();
+  IF v_cuota_id IS NOT NULL THEN
+    UPDATE prestamos_cuotas SET cobrada = p_pagado, fecha_cobro = CASE WHEN p_pagado THEN CURRENT_DATE ELSE NULL END WHERE id = v_cuota_id;
+  END IF;
+END; $$;
+
+GRANT EXECUTE ON FUNCTION crear_gasto_desde_prestamo(uuid, uuid, text, numeric, text, date, text, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION sync_pagado_desde_cobro(uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION sync_cobro_desde_pagado(uuid, boolean) TO authenticated;</pre>
       </details>
     </div>
   </div>
@@ -1908,6 +2004,10 @@ async function togglePagado(id, checked){
     if(gastoComp)gastoComp.pagado=prev;
     showToast(error.message,'error');renderGastos();renderHistorial();renderCompartido();return;
   }
+  const origenPrestamo=(gasto||gastoComp)?.origen_prestamo_cuota_id;
+  if(origenPrestamo){
+    sb.rpc('sync_cobro_desde_pagado',{p_gasto_id:id,p_pagado:checked}).catch(()=>{});
+  }
   showToast(checked?'Marcado como pagado ✓':'Marcado como pendiente');
   renderGastos();renderDashboard();
   if(document.getElementById('gastos-gastos-historial')?.classList.contains('active'))renderHistorial();
@@ -1943,7 +2043,7 @@ function renderGastos(){
     const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?'Marcar como pendiente':'Marcar como pagado'}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
-    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${g.origen_prestamo_cuota_id?' <span style="font-size:11px;color:var(--accent)" title="Préstamo de tarjeta">💳</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -3856,6 +3956,27 @@ function clearPTForm() {
   const prev = document.getElementById('pt-preview'); if(prev) prev.textContent='';
 }
 
+function initPTVincular() {
+  const wrap = document.getElementById('pt-vincular-wrap');
+  if (!wrap) return;
+  const pareja = miParejaActual();
+  if (!pareja) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  document.getElementById('pt-vincular-email').textContent = `(${pareja.partnerEmail || 'tu pareja'})`;
+}
+
+function onTogglePTVincular() {
+  const checked = document.getElementById('pt-vincular-pareja')?.checked;
+  const personaInput = document.getElementById('pt-persona');
+  const pareja = miParejaActual();
+  if (checked && pareja) {
+    personaInput.value = pareja.partnerEmail || 'Mi pareja';
+    personaInput.readOnly = true;
+  } else {
+    personaInput.readOnly = false;
+  }
+}
+
 async function addPrestamo() {
   const desc = document.getElementById('pt-desc').value.trim();
   const persona = document.getElementById('pt-persona').value.trim();
@@ -3898,6 +4019,35 @@ async function addPrestamo() {
   const { data: newCuotas } = await sb.from('prestamos_cuotas').select('*').eq('prestamo_id', ptData.id).order('fecha');
   db.prestamosCuotas.push(...(newCuotas||[]));
 
+  const vincularPareja = document.getElementById('pt-vincular-pareja')?.checked;
+  const pareja = miParejaActual();
+  if (vincularPareja && pareja) {
+    await sb.from('prestamos_tc').update({ persona_user_id: pareja.partnerId }).eq('id', ptData.id);
+    ptData.persona_user_id = pareja.partnerId;
+    let erroresGasto = 0;
+    for (const c of (newCuotas || [])) {
+      const { data: gastoId, error: rpcErr } = await sb.rpc('crear_gasto_desde_prestamo', {
+        p_cuota_id: c.id,
+        p_persona_user_id: pareja.partnerId,
+        p_descripcion: `💳 Préstamo de tarjeta — ${desc} (cuota ${c.cuota_num}/${c.cuota_total})`,
+        p_monto: c.monto,
+        p_moneda: c.moneda,
+        p_fecha: c.fecha,
+        p_cat: 'Otros'
+      });
+      if (rpcErr) { erroresGasto++; continue; }
+      c.gasto_id = gastoId;
+    }
+    if (erroresGasto > 0) {
+      showToast(`Préstamo registrado, pero ${erroresGasto} cuota(s) no se reflejaron en la cuenta de tu pareja. Revisá que el SQL de la sección "Préstamos reflejados en la cuenta de la pareja" esté ejecutado en Supabase.`, 'error');
+    } else {
+      showToast(`Préstamo registrado y reflejado en la cuenta de tu pareja — ${ncuotas} cuotas ✓`);
+    }
+    clearPTForm();
+    renderPrestamos();
+    return;
+  }
+
   clearPTForm();
   renderPrestamos();
   showToast(`Préstamo registrado — ${ncuotas} cuotas ✓`);
@@ -3909,6 +4059,9 @@ async function cobrarCuota(cuotaId) {
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   const c = db.prestamosCuotas.find(x => x.id === cuotaId);
   if (c) { c.cobrada = true; c.fecha_cobro = hoy; }
+  if (c && c.gasto_id) {
+    await sb.rpc('sync_pagado_desde_cobro', { p_cuota_id: cuotaId, p_cobrada: true }).catch(() => {});
+  }
   renderPrestamos();
   showToast('Cuota cobrada ✓');
 }
@@ -3928,6 +4081,7 @@ async function deletePrestamo(prestamoId) {
 
 function renderPrestamos() {
   initPTSelects();
+  initPTVincular();
   const hoyYM = new Date().toISOString().slice(0, 7);
 
   // KPIs
@@ -4034,15 +4188,60 @@ function renderPrestamos() {
         <div style="font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px">
           <span style="font-size:20px">👤</span> ${persona}
         </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--muted)">Le debe a Lucas</div>
-          <div style="font-weight:700;font-size:16px;color:var(--accent)">${fmtARS(totalPersona)}</div>
+        <div style="display:flex;align-items:center;gap:14px">
+          ${(() => {
+            const pareja = miParejaActual();
+            const yaVinculado = items.some(({ prestamo }) => prestamo.persona_user_id);
+            if (!pareja || yaVinculado) return '';
+            return `<button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="vincularGrupoConPareja('${persona.replace(/'/g,"\\'")}')" title="Vincula estos préstamos con tu pareja (${pareja.partnerEmail||''}) para que le aparezcan como gasto en su cuenta">🔗 Vincular con pareja</button>`;
+          })()}
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--muted)">Le debe a Lucas</div>
+            <div style="font-weight:700;font-size:16px;color:var(--accent)">${fmtARS(totalPersona)}</div>
+          </div>
         </div>
       </div>
       ${desgloseHTML}
       ${itemsHTML}
     </div>`;
   }).join('');
+}
+
+async function vincularGrupoConPareja(persona) {
+  const pareja = miParejaActual();
+  if (!pareja) { showToast('No tenés pareja vinculada todavía', 'error'); return; }
+  const prestamosPersona = db.prestamos.filter(p => p.persona === persona && !p.persona_user_id);
+  if (prestamosPersona.length === 0) { showToast('Ya está vinculado'); return; }
+
+  let creados = 0, errores = 0;
+  for (const prestamo of prestamosPersona) {
+    const { error: updErr } = await sb.from('prestamos_tc').update({ persona_user_id: pareja.partnerId }).eq('id', prestamo.id);
+    if (updErr) { errores++; continue; }
+    prestamo.persona_user_id = pareja.partnerId;
+
+    const cuotasSinGasto = db.prestamosCuotas.filter(c => c.prestamo_id === prestamo.id && !c.gasto_id);
+    for (const c of cuotasSinGasto) {
+      const { data: gastoId, error: rpcErr } = await sb.rpc('crear_gasto_desde_prestamo', {
+        p_cuota_id: c.id,
+        p_persona_user_id: pareja.partnerId,
+        p_descripcion: `💳 Préstamo de tarjeta — ${prestamo.descripcion} (cuota ${c.cuota_num}/${c.cuota_total})`,
+        p_monto: c.monto,
+        p_moneda: c.moneda,
+        p_fecha: c.fecha,
+        p_cat: 'Otros',
+        p_pagado: !!c.cobrada
+      });
+      if (rpcErr) { errores++; continue; }
+      c.gasto_id = gastoId;
+      creados++;
+    }
+  }
+  if (errores > 0) {
+    showToast(`Vinculado con ${creados} cuota(s) reflejadas, pero ${errores} fallaron. Revisá que el SQL esté ejecutado en Supabase.`, 'error');
+  } else {
+    showToast(`Vinculado ✓ — ${creados} cuota(s) reflejadas en la cuenta de tu pareja`);
+  }
+  renderPrestamos();
 }
 
 
