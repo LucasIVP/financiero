@@ -5210,7 +5210,7 @@ async function confirmarFinalizarCompra() {
       let m = acredMes + i, y = acredAnio;
       while (m > 11) { m -= 12; y++; }
       const fechaCuota = `${y}-${String(m + 1).padStart(2, '0')}-${String(fecha.split('-')[2]).padStart(2, '0')}`;
-      cuotas.push({ user_id: currentUser.id, fecha: fechaCuota, descripcion: `${desc} (${i+1}/${ncuotas})`, monto: montoCuota, moneda: 'ARS', cat, tipo: 'cuota', medio, tarjeta_id: tarjetaId || null, plan_id: planId, cuota_num: i+1, total_cuotas: ncuotas, es_compartido: esCompartido, notas: notasTrazables });
+      cuotas.push({ user_id: currentUser.id, fecha: fechaCuota, descripcion: `${desc} (${i+1}/${ncuotas})`, monto: montoCuota, moneda: 'ARS', cat, tipo: 'cuota', medio, tarjeta_id: tarjetaId || null, plan_id: planId, cuota_num: i+1, cuota_total: ncuotas, cuota_monto: montoCuota, es_compartido: esCompartido, notas: notasTrazables });
     }
     const { error } = await sb.from('gastos').insert(cuotas);
     setBtnLoading('btn-confirmar-compra', false);
