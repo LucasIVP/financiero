@@ -420,13 +420,6 @@
       <div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
         <div class="form-group"><label>Descripción</label><input type="text" id="pt-desc" placeholder="Ej: Notebook Samsung"></div>
         <div class="form-group"><label>Persona</label><input type="text" id="pt-persona" placeholder="Ej: Mamá"></div>
-        <div class="form-group" id="pt-vincular-wrap" style="display:none;grid-column:1/-1">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <input type="checkbox" id="pt-vincular-pareja" onchange="onTogglePTVincular()" style="width:16px;height:16px;accent-color:var(--accent)">
-            <span style="font-weight:600">💑 Vincular con mi pareja <span id="pt-vincular-email" style="color:var(--muted);font-weight:400"></span></span>
-          </label>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">Si lo tildás, cada cuota le va a aparecer como gasto pendiente de pago en su propia cuenta, y ella va a poder marcarla "pagado" desde ahí.</div>
-        </div>
         <div class="form-group"><label>Monto total</label><input type="number" id="pt-monto" placeholder="0" oninput="updatePTPreview()"></div>
         <div class="form-group"><label>Moneda</label><select id="pt-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
         <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="pt-ncuotas" placeholder="12" min="1" max="60" oninput="updatePTPreview()"></div>
@@ -764,7 +757,40 @@ ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS es_compartida boolean DEFAULT
 --                                 OR (p.user_b = auth.uid() AND p.user_a = compras_items.user_id))));
 -- CREATE POLICY "compras_items_write" ON compras_items FOR INSERT WITH CHECK (auth.uid() = user_id);
 -- CREATE POLICY "compras_items_update" ON compras_items FOR UPDATE USING (auth.uid() = user_id);
--- CREATE POLICY "compras_items_delete" ON compras_items FOR DELETE USING (auth.uid() = user_id);</pre>
+-- CREATE POLICY "compras_items_delete" ON compras_items FOR DELETE USING (auth.uid() = user_id);
+
+-- Listas de compra (una por cada vez que se va a comprar, para no mezclar compras distintas)
+CREATE TABLE compras_listas (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users NOT NULL,
+  nombre text NOT NULL,
+  fecha date NOT NULL DEFAULT current_date,
+  estado text NOT NULL DEFAULT 'abierta' CHECK (estado IN ('abierta','cerrada')),
+  es_compartida boolean DEFAULT false,
+  created_at timestamptz DEFAULT now(),
+  closed_at timestamptz
+);
+ALTER TABLE compras_listas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "compras_listas_select" ON compras_listas FOR SELECT
+  USING (auth.uid() = user_id OR (es_compartida = true AND EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = compras_listas.user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = compras_listas.user_id))));
+CREATE POLICY "compras_listas_insert" ON compras_listas FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "compras_listas_update" ON compras_listas FOR UPDATE
+  USING (auth.uid() = user_id OR (es_compartida = true AND EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = compras_listas.user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = compras_listas.user_id))));
+CREATE POLICY "compras_listas_delete" ON compras_listas FOR DELETE USING (auth.uid() = user_id);
+
+-- lista_id en compras_items: NULL = backlog (sin asignar a ninguna compra puntual)
+ALTER TABLE compras_items ADD COLUMN IF NOT EXISTS lista_id uuid REFERENCES compras_listas(id) ON DELETE SET NULL;
+
+-- Ampliar UPDATE de compras_items para que la pareja también pueda tildar/editar ítems compartidos
+DROP POLICY IF EXISTS "compras_items_update" ON compras_items;
+CREATE POLICY "compras_items_update" ON compras_items FOR UPDATE
+  USING (auth.uid() = user_id OR (es_compartida = true AND EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = compras_items.user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = compras_items.user_id))));</pre>
       </details>
       <details style="margin-top:10px">
         <summary style="cursor:pointer;color:var(--muted);font-size:13px">💑 SQL: Vínculo de pareja (ejecutar una sola vez)</summary>
@@ -853,95 +879,6 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
 -- Default TRUE para no afectar retroactivamente el historial ya cargado.
 ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
       </details>
-      <details style="margin-top:10px">
-        <summary style="cursor:pointer;color:var(--muted);font-size:13px">💸 SQL: Préstamos reflejados en la cuenta de la pareja (ejecutar una sola vez)</summary>
-        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- 1) Vincular el préstamo a un usuario real de la app (tu pareja), sin perder el campo de texto libre
-ALTER TABLE prestamos_tc ADD COLUMN IF NOT EXISTS persona_user_id uuid REFERENCES auth.users(id);
-ALTER TABLE prestamos_cuotas ADD COLUMN IF NOT EXISTS gasto_id uuid REFERENCES gastos(id) ON DELETE SET NULL;
-ALTER TABLE gastos ADD COLUMN IF NOT EXISTS origen_prestamo_cuota_id uuid REFERENCES prestamos_cuotas(id) ON DELETE SET NULL;
-
--- 2) La persona vinculada puede VER el préstamo y sus cuotas (no editarlas)
-DO $$
-DECLARE pol record;
-BEGIN
-  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'prestamos_tc' LOOP
-    EXECUTE format('DROP POLICY %I ON prestamos_tc', pol.policyname);
-  END LOOP;
-  FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'prestamos_cuotas' LOOP
-    EXECUTE format('DROP POLICY %I ON prestamos_cuotas', pol.policyname);
-  END LOOP;
-END $$;
-
-CREATE POLICY "prestamos_tc_select" ON prestamos_tc FOR SELECT
-  USING (auth.uid() = user_id OR auth.uid() = persona_user_id);
-CREATE POLICY "prestamos_tc_insert" ON prestamos_tc FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "prestamos_tc_update" ON prestamos_tc FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "prestamos_tc_delete" ON prestamos_tc FOR DELETE USING (auth.uid() = user_id);
-
-CREATE POLICY "prestamos_cuotas_select" ON prestamos_cuotas FOR SELECT
-  USING (auth.uid() = user_id OR EXISTS (
-    SELECT 1 FROM prestamos_tc p WHERE p.id = prestamos_cuotas.prestamo_id AND p.persona_user_id = auth.uid()
-  ));
-CREATE POLICY "prestamos_cuotas_insert" ON prestamos_cuotas FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "prestamos_cuotas_update" ON prestamos_cuotas FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "prestamos_cuotas_delete" ON prestamos_cuotas FOR DELETE USING (auth.uid() = user_id);
-
--- 3) Función: crea, desde tu cuenta, el gasto "espejo" en la cuenta de tu pareja
--- (si ya habías corrido una versión anterior de esta función con 7 parámetros, esto la reemplaza limpiamente)
-DROP FUNCTION IF EXISTS crear_gasto_desde_prestamo(uuid, uuid, text, numeric, text, date, text);
-
-CREATE OR REPLACE FUNCTION crear_gasto_desde_prestamo(
-  p_cuota_id uuid, p_persona_user_id uuid, p_descripcion text,
-  p_monto numeric, p_moneda text, p_fecha date, p_cat text, p_pagado boolean DEFAULT false
-) RETURNS uuid
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_gasto_id uuid;
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = p_persona_user_id)
-                                OR (p.user_b = auth.uid() AND p.user_a = p_persona_user_id)
-  ) THEN
-    RAISE EXCEPTION 'No estás vinculado con ese usuario';
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM prestamos_cuotas WHERE id = p_cuota_id AND user_id = auth.uid()) THEN
-    RAISE EXCEPTION 'La cuota no te pertenece';
-  END IF;
-
-  INSERT INTO gastos (user_id, fecha, descripcion, monto, moneda, cat, tipo, medio, pagado, origen_prestamo_cuota_id)
-  VALUES (p_persona_user_id, p_fecha, p_descripcion, p_monto, p_moneda, p_cat, 'regular', 'Tarjeta prestada', p_pagado, p_cuota_id)
-  RETURNING id INTO v_gasto_id;
-
-  UPDATE prestamos_cuotas SET gasto_id = v_gasto_id WHERE id = p_cuota_id;
-  RETURN v_gasto_id;
-END; $$;
-
--- 4) Función: cuando VOS marcás una cuota como "✓ Cobrar", se marca pagado el gasto de tu pareja
-CREATE OR REPLACE FUNCTION sync_pagado_desde_cobro(p_cuota_id uuid, p_cobrada boolean)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_gasto_id uuid;
-BEGIN
-  SELECT gasto_id INTO v_gasto_id FROM prestamos_cuotas WHERE id = p_cuota_id AND user_id = auth.uid();
-  IF v_gasto_id IS NOT NULL THEN
-    UPDATE gastos SET pagado = p_cobrada WHERE id = v_gasto_id;
-  END IF;
-END; $$;
-
--- 5) Función: cuando TU PAREJA marca su gasto como pagado, se marca "cobrada" tu cuota
-CREATE OR REPLACE FUNCTION sync_cobro_desde_pagado(p_gasto_id uuid, p_pagado boolean)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_cuota_id uuid;
-BEGIN
-  SELECT origen_prestamo_cuota_id INTO v_cuota_id FROM gastos WHERE id = p_gasto_id AND user_id = auth.uid();
-  IF v_cuota_id IS NOT NULL THEN
-    UPDATE prestamos_cuotas SET cobrada = p_pagado, fecha_cobro = CASE WHEN p_pagado THEN CURRENT_DATE ELSE NULL END WHERE id = v_cuota_id;
-  END IF;
-END; $$;
-
-GRANT EXECUTE ON FUNCTION crear_gasto_desde_prestamo(uuid, uuid, text, numeric, text, date, text, boolean) TO authenticated;
-GRANT EXECUTE ON FUNCTION sync_pagado_desde_cobro(uuid, boolean) TO authenticated;
-GRANT EXECUTE ON FUNCTION sync_cobro_desde_pagado(uuid, boolean) TO authenticated;</pre>
-      </details>
     </div>
   </div>
 </div>
@@ -960,10 +897,12 @@ GRANT EXECUTE ON FUNCTION sync_cobro_desde_pagado(uuid, boolean) TO authenticate
 
   <!-- Tab: Lista actual -->
   <div id="compras-compras-lista" class="inner-section active">
+    <div id="compras-listas-bar" style="margin-bottom:16px"></div>
     <div class="card" style="margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:14px">Agregar ítem</div>
       <div class="form-grid">
         <div class="form-group"><label>Nombre</label><input type="text" id="ci-nombre" placeholder="Ej: Leche"></div>
+        <div class="form-group"><label>Agregar a</label><select id="ci-destino" onchange="syncCiCompartidaConDestino()"></select></div>
         <div class="form-group"><label>Tema / Tienda</label><select id="ci-tema"><option value="General">General</option></select></div>
         <div class="form-group"><label>Cantidad</label><input type="number" id="ci-cantidad" placeholder="1" min="1" value="1"></div>
         <div class="form-group"><label>Precio de referencia</label><input type="number" id="ci-precio" placeholder="0" min="0"></div>
@@ -995,23 +934,9 @@ GRANT EXECUTE ON FUNCTION sync_cobro_desde_pagado(uuid, boolean) TO authenticate
       <select id="ci-filter-tema" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todos los temas</option></select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" id="ci-filter-pendientes" onchange="renderCompras()" style="accent-color:var(--accent)"> Solo pendientes</label>
     </div>
-    <!-- Calculadora de compra -->
-    <div id="compras-calc-bar" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-          <span style="font-size:13px;color:var(--muted)">🧮 Calculadora de compra</span>
-          <span style="font-size:20px;font-weight:700;color:var(--accent2)" id="calc-total-display">$0</span>
-          <span style="font-size:12px;color:var(--muted)" id="calc-items-display">0 ítems marcados</span>
-          <span style="font-size:12px;color:var(--green)" id="calc-ahorro-display"></span>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost" onclick="resetCalc()" style="font-size:12px;padding:6px 12px">🔄 Reiniciar</button>
-          <button class="btn btn-primary" onclick="finalizarCompra()" style="font-size:12px;padding:6px 14px;background:var(--accent2);border-color:var(--accent2)">✅ Finalizar compra → Gastos</button>
-        </div>
-      </div>
-    </div>
     <div id="compras-kpis" class="grid-3" style="margin-bottom:16px"></div>
     <div id="compras-lista-container"></div>
+    <div id="compras-backlog-container" style="margin-top:16px"></div>
   </div>
 
   <!-- Tab: Historial de precios -->
@@ -1369,6 +1294,23 @@ GRANT EXECUTE ON FUNCTION sync_cobro_desde_pagado(uuid, boolean) TO authenticate
   </div>
 </div>
 
+<!-- Modal: Armar lista de compra -->
+<div class="modal-overlay" id="modal-nueva-lista">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><span class="modal-title">🆕 Armar lista</span><button class="modal-close" onclick="closeModal('modal-nueva-lista')">×</button></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Una lista por cada vez que vas a comprar (o que estás comprando ahora mismo). Los ítems que le agregues no se mezclan con otras compras.</div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group" style="grid-column:1/-1"><label>Nombre</label><input type="text" id="nl-nombre" placeholder="Ej: Compra 25/07"></div>
+      <div class="form-group"><label>Fecha</label><input type="date" id="nl-fecha"></div>
+      <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:6px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="nl-compartida" style="width:16px;height:16px;accent-color:var(--accent2)" checked> <span style="color:var(--accent2);font-weight:600">💑 Compartida</span></label></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn btn-ghost" onclick="closeModal('modal-nueva-lista')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-crear-lista" onclick="crearListaCompra()">Crear</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Finalizar Compra -->
 <div class="modal-overlay" id="modal-finalizar-compra">
   <div class="modal" style="max-width:480px">
@@ -1437,7 +1379,7 @@ function emptyDB() {
     prestamos:[],prestamosCuotas:[],
     categorias:defaultCategories(),
     subcategorias:[],
-    comprasItems:[],comprasTemas:[],
+    comprasItems:[],comprasTemas:[],comprasListas:[],
     parejas:[],parejaSolicitudesEnviadas:[],parejaSolicitudesRecibidas:[],
     config:{dolar:1400,dolar_fecha:'',obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30}
   };
@@ -1506,7 +1448,7 @@ async function loadAllData(){
   setLoading(true,'Cargando tus datos...');
   const uid=currentUser.id;
   try{
-    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc,subcat,citems,ctemas,par,solEnv,solRec]=await Promise.all([
+    const[g,i,c,inv,act,deu,cfg,cat,ph,tc,pt,ptc,subcat,citems,ctemas,clistas,par,solEnv,solRec]=await Promise.all([
       sb.from('gastos').select('*').or(`user_id.eq.${uid},es_compartido.eq.true`).order('fecha',{ascending:false}),
       sb.from('ingresos').select('*').eq('user_id',uid).order('fecha',{ascending:false}),
       sb.from('cuotas').select('*').eq('user_id',uid),
@@ -1522,6 +1464,7 @@ async function loadAllData(){
       sb.from('subcategorias').select('*').eq('user_id',uid).order('nombre'),
       sb.from('compras_items').select('*').or(`user_id.eq.${uid},es_compartida.eq.true`).order('created_at',{ascending:false}),
       sb.from('compras_temas').select('*').eq('user_id',uid).order('nombre'),
+      sb.from('compras_listas').select('*').or(`user_id.eq.${uid},es_compartida.eq.true`).order('created_at',{ascending:false}),
       sb.from('parejas').select('*'),
       sb.from('pareja_solicitudes').select('*').eq('from_user',uid).order('created_at',{ascending:false}),
       sb.from('pareja_solicitudes').select('*').eq('to_email',(currentUser.email||'').toLowerCase()).order('created_at',{ascending:false}),
@@ -1551,6 +1494,7 @@ async function loadAllData(){
     db.subcategorias=subcat.data||[];
     db.comprasItems=citems.data||[];
     db.comprasTemas=ctemas.data||[];
+    db.comprasListas=clistas.data||[];
     db.parejas=par.data||[];
     db.parejaSolicitudesEnviadas=(solEnv.data||[]).filter(s=>s.estado==='pendiente');
     db.parejaSolicitudesRecibidas=(solRec.data||[]).filter(s=>s.estado==='pendiente');
@@ -2004,10 +1948,6 @@ async function togglePagado(id, checked){
     if(gastoComp)gastoComp.pagado=prev;
     showToast(error.message,'error');renderGastos();renderHistorial();renderCompartido();return;
   }
-  const origenPrestamo=(gasto||gastoComp)?.origen_prestamo_cuota_id;
-  if(origenPrestamo){
-    sb.rpc('sync_cobro_desde_pagado',{p_gasto_id:id,p_pagado:checked}).catch(()=>{});
-  }
   showToast(checked?'Marcado como pagado ✓':'Marcado como pendiente');
   renderGastos();renderDashboard();
   if(document.getElementById('gastos-gastos-historial')?.classList.contains('active'))renderHistorial();
@@ -2043,7 +1983,7 @@ function renderGastos(){
     const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?'Marcar como pendiente':'Marcar como pagado'}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
-    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${g.origen_prestamo_cuota_id?' <span style="font-size:11px;color:var(--accent)" title="Préstamo de tarjeta">💳</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -3956,27 +3896,6 @@ function clearPTForm() {
   const prev = document.getElementById('pt-preview'); if(prev) prev.textContent='';
 }
 
-function initPTVincular() {
-  const wrap = document.getElementById('pt-vincular-wrap');
-  if (!wrap) return;
-  const pareja = miParejaActual();
-  if (!pareja) { wrap.style.display = 'none'; return; }
-  wrap.style.display = '';
-  document.getElementById('pt-vincular-email').textContent = `(${pareja.partnerEmail || 'tu pareja'})`;
-}
-
-function onTogglePTVincular() {
-  const checked = document.getElementById('pt-vincular-pareja')?.checked;
-  const personaInput = document.getElementById('pt-persona');
-  const pareja = miParejaActual();
-  if (checked && pareja) {
-    personaInput.value = pareja.partnerEmail || 'Mi pareja';
-    personaInput.readOnly = true;
-  } else {
-    personaInput.readOnly = false;
-  }
-}
-
 async function addPrestamo() {
   const desc = document.getElementById('pt-desc').value.trim();
   const persona = document.getElementById('pt-persona').value.trim();
@@ -4019,35 +3938,6 @@ async function addPrestamo() {
   const { data: newCuotas } = await sb.from('prestamos_cuotas').select('*').eq('prestamo_id', ptData.id).order('fecha');
   db.prestamosCuotas.push(...(newCuotas||[]));
 
-  const vincularPareja = document.getElementById('pt-vincular-pareja')?.checked;
-  const pareja = miParejaActual();
-  if (vincularPareja && pareja) {
-    await sb.from('prestamos_tc').update({ persona_user_id: pareja.partnerId }).eq('id', ptData.id);
-    ptData.persona_user_id = pareja.partnerId;
-    let erroresGasto = 0;
-    for (const c of (newCuotas || [])) {
-      const { data: gastoId, error: rpcErr } = await sb.rpc('crear_gasto_desde_prestamo', {
-        p_cuota_id: c.id,
-        p_persona_user_id: pareja.partnerId,
-        p_descripcion: `💳 Préstamo de tarjeta — ${desc} (cuota ${c.cuota_num}/${c.cuota_total})`,
-        p_monto: c.monto,
-        p_moneda: c.moneda,
-        p_fecha: c.fecha,
-        p_cat: 'Otros'
-      });
-      if (rpcErr) { erroresGasto++; continue; }
-      c.gasto_id = gastoId;
-    }
-    if (erroresGasto > 0) {
-      showToast(`Préstamo registrado, pero ${erroresGasto} cuota(s) no se reflejaron en la cuenta de tu pareja. Revisá que el SQL de la sección "Préstamos reflejados en la cuenta de la pareja" esté ejecutado en Supabase.`, 'error');
-    } else {
-      showToast(`Préstamo registrado y reflejado en la cuenta de tu pareja — ${ncuotas} cuotas ✓`);
-    }
-    clearPTForm();
-    renderPrestamos();
-    return;
-  }
-
   clearPTForm();
   renderPrestamos();
   showToast(`Préstamo registrado — ${ncuotas} cuotas ✓`);
@@ -4059,9 +3949,6 @@ async function cobrarCuota(cuotaId) {
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   const c = db.prestamosCuotas.find(x => x.id === cuotaId);
   if (c) { c.cobrada = true; c.fecha_cobro = hoy; }
-  if (c && c.gasto_id) {
-    await sb.rpc('sync_pagado_desde_cobro', { p_cuota_id: cuotaId, p_cobrada: true }).catch(() => {});
-  }
   renderPrestamos();
   showToast('Cuota cobrada ✓');
 }
@@ -4081,7 +3968,6 @@ async function deletePrestamo(prestamoId) {
 
 function renderPrestamos() {
   initPTSelects();
-  initPTVincular();
   const hoyYM = new Date().toISOString().slice(0, 7);
 
   // KPIs
@@ -4188,60 +4074,15 @@ function renderPrestamos() {
         <div style="font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px">
           <span style="font-size:20px">👤</span> ${persona}
         </div>
-        <div style="display:flex;align-items:center;gap:14px">
-          ${(() => {
-            const pareja = miParejaActual();
-            const yaVinculado = items.some(({ prestamo }) => prestamo.persona_user_id);
-            if (!pareja || yaVinculado) return '';
-            return `<button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="vincularGrupoConPareja('${persona.replace(/'/g,"\\'")}')" title="Vincula estos préstamos con tu pareja (${pareja.partnerEmail||''}) para que le aparezcan como gasto en su cuenta">🔗 Vincular con pareja</button>`;
-          })()}
-          <div style="text-align:right">
-            <div style="font-size:11px;color:var(--muted)">Le debe a Lucas</div>
-            <div style="font-weight:700;font-size:16px;color:var(--accent)">${fmtARS(totalPersona)}</div>
-          </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--muted)">Le debe a Lucas</div>
+          <div style="font-weight:700;font-size:16px;color:var(--accent)">${fmtARS(totalPersona)}</div>
         </div>
       </div>
       ${desgloseHTML}
       ${itemsHTML}
     </div>`;
   }).join('');
-}
-
-async function vincularGrupoConPareja(persona) {
-  const pareja = miParejaActual();
-  if (!pareja) { showToast('No tenés pareja vinculada todavía', 'error'); return; }
-  const prestamosPersona = db.prestamos.filter(p => p.persona === persona && !p.persona_user_id);
-  if (prestamosPersona.length === 0) { showToast('Ya está vinculado'); return; }
-
-  let creados = 0, errores = 0;
-  for (const prestamo of prestamosPersona) {
-    const { error: updErr } = await sb.from('prestamos_tc').update({ persona_user_id: pareja.partnerId }).eq('id', prestamo.id);
-    if (updErr) { errores++; continue; }
-    prestamo.persona_user_id = pareja.partnerId;
-
-    const cuotasSinGasto = db.prestamosCuotas.filter(c => c.prestamo_id === prestamo.id && !c.gasto_id);
-    for (const c of cuotasSinGasto) {
-      const { data: gastoId, error: rpcErr } = await sb.rpc('crear_gasto_desde_prestamo', {
-        p_cuota_id: c.id,
-        p_persona_user_id: pareja.partnerId,
-        p_descripcion: `💳 Préstamo de tarjeta — ${prestamo.descripcion} (cuota ${c.cuota_num}/${c.cuota_total})`,
-        p_monto: c.monto,
-        p_moneda: c.moneda,
-        p_fecha: c.fecha,
-        p_cat: 'Otros',
-        p_pagado: !!c.cobrada
-      });
-      if (rpcErr) { errores++; continue; }
-      c.gasto_id = gastoId;
-      creados++;
-    }
-  }
-  if (errores > 0) {
-    showToast(`Vinculado con ${creados} cuota(s) reflejadas, pero ${errores} fallaron. Revisá que el SQL esté ejecutado en Supabase.`, 'error');
-  } else {
-    showToast(`Vinculado ✓ — ${creados} cuota(s) reflejadas en la cuenta de tu pareja`);
-  }
-  renderPrestamos();
 }
 
 
@@ -4699,6 +4540,99 @@ function initComprasTemaSelect() {
   if (elFilter && prevFilter) elFilter.value = prevFilter;
 }
 
+// Select "Agregar a" del form de nuevo ítem: backlog o alguna lista abierta.
+// Si hay una lista recién creada o ya seleccionada, se mantiene elegida entre renders
+// para poder ir anotando varios ítems seguidos sin tener que re-elegir cada vez.
+function initComprasListaSelect() {
+  const sel = document.getElementById('ci-destino');
+  if (!sel) return;
+  const prev = sel.value;
+  const abiertas = db.comprasListas.filter(l => l.estado === 'abierta')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  sel.innerHTML = '<option value="">📥 Backlog (sin asignar todavía)</option>' +
+    abiertas.map(l => `<option value="${l.id}">🛒 ${l.nombre}</option>`).join('');
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  else if (abiertas.length > 0) sel.value = abiertas[0].id;
+}
+
+function renderComprasListasBar() {
+  const bar = document.getElementById('compras-listas-bar');
+  if (!bar) return;
+  const abiertas = db.comprasListas.filter(l => l.estado === 'abierta')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const chips = abiertas.map(l => {
+    const litems = db.comprasItems.filter(x => x.lista_id === l.id);
+    const compr = litems.filter(x => x.comprado).length;
+    return `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:6px 12px;font-size:12px;color:var(--muted)">🛒 <strong style="color:var(--text)">${l.nombre}</strong> · ${compr}/${litems.length}${l.es_compartida ? ' 💑' : ''}</span>`;
+  }).join('');
+  bar.innerHTML = `<div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      ${abiertas.length ? chips : '<span style="font-size:13px;color:var(--muted)">No tenés ninguna compra en curso todavía.</span>'}
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalNuevaLista()" style="font-size:12px;padding:7px 14px">🆕 Armar lista</button>
+  </div>`;
+}
+
+function abrirModalNuevaLista() {
+  const hoy = new Date();
+  const fechaStr = hoy.toISOString().slice(0, 10);
+  document.getElementById('nl-fecha').value = fechaStr;
+  document.getElementById('nl-nombre').value = `Compra ${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  const compEl = document.getElementById('nl-compartida');
+  if (compEl) compEl.checked = true;
+  openModal('modal-nueva-lista');
+  setTimeout(() => document.getElementById('nl-nombre')?.focus(), 50);
+}
+
+async function crearListaCompra() {
+  const nombre = document.getElementById('nl-nombre')?.value.trim() || '';
+  const fecha = document.getElementById('nl-fecha')?.value || new Date().toISOString().slice(0, 10);
+  const esCompartida = document.getElementById('nl-compartida')?.checked || false;
+  if (!nombre) { showToast('Ponele un nombre a la lista', 'error'); return; }
+  setBtnLoading('btn-crear-lista', true);
+  const { data, error } = await sb.from('compras_listas').insert({
+    user_id: currentUser.id, nombre, fecha, estado: 'abierta', es_compartida: esCompartida
+  }).select().single();
+  setBtnLoading('btn-crear-lista', false);
+  if (error) { showToast(error.message, 'error'); return; }
+  db.comprasListas.unshift(data);
+  closeModal('modal-nueva-lista');
+  renderCompras();
+  const destinoSel = document.getElementById('ci-destino');
+  if (destinoSel) destinoSel.value = data.id;
+  showToast('Lista creada ✓ — ahora podés ir agregando ítems ahí');
+}
+
+async function cerrarListaSinRegistrar(id) {
+  const lista = db.comprasListas.find(l => l.id === id);
+  if (!lista) return;
+  const ok = confirm(`¿Cerrar "${lista.nombre}" sin registrar un gasto? Los ítems quedan guardados, pero la lista deja de aparecer como compra en curso.`);
+  if (!ok) return;
+  const update = { estado: 'cerrada', closed_at: new Date().toISOString() };
+  const { error } = await sb.from('compras_listas').update(update).eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  Object.assign(lista, update);
+  renderCompras();
+  showToast('Lista cerrada');
+}
+
+function syncCiCompartidaConDestino() {
+  const listaId = document.getElementById('ci-destino')?.value || '';
+  const lista = listaId ? db.comprasListas.find(l => l.id === listaId) : null;
+  const compEl = document.getElementById('ci-compartida');
+  if (compEl && lista?.es_compartida) compEl.checked = true;
+}
+
+async function moverItemALista(id, listaId) {
+  if (!listaId) return;
+  const { error } = await sb.from('compras_items').update({ lista_id: listaId }).eq('id', id);
+  if (error) { showToast(error.message, 'error'); return; }
+  const item = db.comprasItems.find(x => x.id === id);
+  if (item) item.lista_id = listaId;
+  renderCompras();
+  showToast('Movido a la lista ✓');
+}
+
 async function addCompraItem() {
   const nombre = document.getElementById('ci-nombre')?.value.trim() || '';
   const tema = document.getElementById('ci-tema')?.value || 'General';
@@ -4709,12 +4643,17 @@ async function addCompraItem() {
   const promo = document.getElementById('ci-promo')?.value || '';
   const promoExtra = parseFloat(document.getElementById('ci-promo-extra')?.value) || null;
   const lugar = document.getElementById('ci-lugar')?.value.trim() || null;
-  const esCompartida = document.getElementById('ci-compartida')?.checked || false;
+  const listaId = document.getElementById('ci-destino')?.value || null;
+  const listaDestino = listaId ? db.comprasListas.find(l => l.id === listaId) : null;
+  // Si la lista destino es compartida, el ítem se marca compartido sí o sí — evita que
+  // quede invisible para la pareja por haberse olvidado de tildar el checkbox del ítem.
+  let esCompartida = document.getElementById('ci-compartida')?.checked || false;
+  if (listaDestino?.es_compartida) esCompartida = true;
   if (!nombre) { showToast('Ingresá el nombre del ítem', 'error'); return; }
   setBtnLoading('btn-add-compra', true);
   const { data, error } = await sb.from('compras_items').insert({
     user_id: currentUser.id, nombre, tema, cantidad, precio_estimado: precio, notas, mes_referencia: mes, comprado: false,
-    promo: promo || null, promo_extra: promoExtra || null, lugar, es_compartida: esCompartida
+    promo: promo || null, promo_extra: promoExtra || null, lugar, es_compartida: esCompartida, lista_id: listaId || null
   }).select().single();
   setBtnLoading('btn-add-compra', false);
   if (error) { showToast(error.message, 'error'); return; }
@@ -4839,71 +4778,12 @@ function promoLabel(promo, promoExtra) {
   return '';
 }
 
-function renderCompras() {
-  initComprasMesSelect();
-  initComprasTemaSelect();
-  // Actualizar datalist de lugares con los ya usados
-  const datalist = document.getElementById('ci-lugar-sugerencias');
-  if (datalist) {
-    const lugares = [...new Set(db.comprasItems.filter(x => x.lugar).map(x => x.lugar))].sort();
-    datalist.innerHTML = lugares.map(l => `<option value="${l}">`).join('');
-  }
-  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
-  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
-  const soloPendientes = document.getElementById('ci-filter-pendientes')?.checked || false;
-
-  let items = db.comprasItems;
-  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
-  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
-  if (soloPendientes) items = items.filter(x => !x.comprado);
-
-  const pendientes = items.filter(x => !x.comprado).length;
-  const comprados = items.filter(x => x.comprado).length;
-
-  // Calculadora: precio_real de todos los que tienen (sin importar checkbox)
-  // Si no tiene precio_real pero tiene estimado, usa el estimado con promo
-  const itemsConPrecioReal = items.filter(x => x.precio_real);
-  const itemsSoloPrecioEst = items.filter(x => !x.precio_real && x.precio_estimado);
-  // precio_real ya es el total pagado; precio_estimado es unitario → multiplicar por cantidad
-  const calcTotal = itemsConPrecioReal.reduce((s, x) => s + x.precio_real, 0)
-    + itemsSoloPrecioEst.reduce((s, x) => {
-        const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
-        return s + (ef ?? x.precio_estimado * x.cantidad);
-      }, 0);
-  const itemsConPrecio = items.filter(x => x.precio_real || x.precio_estimado);
-  const calcBar = document.getElementById('compras-calc-bar');
-  if (calcBar) {
-    calcBar.style.display = itemsConPrecio.length > 0 ? 'block' : 'none';
-    const el = document.getElementById('calc-total-display');
-    const elN = document.getElementById('calc-items-display');
-    if (el) el.textContent = fmtARS(calcTotal);
-    const conReal = itemsConPrecioReal.length;
-    const soloEst = itemsSoloPrecioEst.length;
-    // Ahorro total por promos
-    const ahorroTotal = items.reduce((s, x) => {
-      if (!x.precio_estimado || !x.promo) return s;
-      const sinP = x.precio_estimado * x.cantidad;
-      const conP = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra) ?? sinP;
-      return s + (sinP - conP);
-    }, 0);
-    const ahorroEl = document.getElementById('calc-ahorro-display');
-    if (ahorroEl) ahorroEl.textContent = ahorroTotal > 0 ? `· 🏷️ Ahorrás ${fmtARS(ahorroTotal)} en promos` : '';
-    if (elN) elN.textContent = `${conReal} con precio final · ${soloEst} solo con referencia`;
-  }
-
-  // Gasto real KPI = solo confirmados (checkbox) con precio real
-  const gastoReal = items.filter(x => x.comprado && x.precio_real).reduce((s, x) => s + x.precio_real, 0);
-  const totalEstimado = items.filter(x => x.precio_estimado).reduce((s, x) => {
-    const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
-    return s + (ef ?? x.precio_estimado * x.cantidad);
-  }, 0);
-
-  document.getElementById('compras-kpis').innerHTML = `
-    <div class="card"><div class="card-title">Pendientes</div><div class="card-value" style="color:var(--warn)">${pendientes}</div></div>
-    <div class="card"><div class="card-title">Comprados</div><div class="card-value" style="color:var(--green)">${comprados}</div></div>
-    <div class="card"><div class="card-title">Gasto real</div><div class="card-value amount-negative">${gastoReal > 0 ? fmtARS(gastoReal) : '—'}</div><div class="card-sub">${totalEstimado > 0 ? `Estimado total: ${fmtARS(totalEstimado)}` : ''}</div></div>`;
-
-  // Agrupar por tema
+// Construye las tarjetas agrupadas por tema para un subconjunto de ítems.
+// listasParaMover: si se pasa (no vacío), agrega una columna para mover el ítem
+// de backlog a una lista abierta puntual.
+function buildComprasTable(items, listasParaMover) {
+  if (items.length === 0) return '';
+  const moverCol = listasParaMover && listasParaMover.length > 0;
   const porTema = {};
   items.forEach(x => {
     const t = x.tema || 'General';
@@ -4911,17 +4791,12 @@ function renderCompras() {
     porTema[t].push(x);
   });
 
-  const container = document.getElementById('compras-lista-container');
-  if (items.length === 0) { container.innerHTML = '<div class="empty-state">No hay ítems en la lista</div>'; return; }
-
-  container.innerHTML = Object.entries(porTema).map(([tema, tItems]) => {
-    // Subtotal por tema
+  return Object.entries(porTema).map(([tema, tItems]) => {
     const subtotalTema = tItems.reduce((s, x) => {
-      if (x.precio_real) return s + x.precio_real; // ya es total
+      if (x.precio_real) return s + x.precio_real;
       const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
       return s + (ef ?? (x.precio_estimado ? x.precio_estimado * x.cantidad : 0));
     }, 0);
-    // Ahorro por promos en este tema
     const ahorroTema = tItems.reduce((s, x) => {
       if (!x.precio_estimado || !x.promo) return s;
       const sinPromo = x.precio_estimado * x.cantidad;
@@ -4930,16 +4805,14 @@ function renderCompras() {
     }, 0);
 
     const rows = tItems.map(x => {
-      const precioRef = x.precio_estimado;           // precio unitario de referencia
-      const totalFinal = x.precio_real ?? null;       // total pagado (lo que escribe el usuario)
+      const precioRef = x.precio_estimado;
+      const totalFinal = x.precio_real ?? null;
       const totalSinPromo = precioRef ? precioRef * x.cantidad : null;
       const totalConPromo = calcPrecioConPromo(precioRef, x.cantidad, x.promo, x.promo_extra);
-      const totalRef = totalConPromo ?? totalSinPromo; // total de referencia con promo aplicada
+      const totalRef = totalConPromo ?? totalSinPromo;
 
-      // Ahorro por promo
       const ahorroItem = (totalSinPromo && totalConPromo) ? totalSinPromo - totalConPromo : 0;
 
-      // Diferencia final vs referencia (ambos son totales ahora)
       const diferencia = (totalRef && totalFinal !== null) ? totalFinal - totalRef : null;
       const difLabel = diferencia === null ? '' : diferencia === 0
         ? `<span style="font-size:10px;color:var(--green)">✓ igual al ref</span>`
@@ -4951,7 +4824,6 @@ function renderCompras() {
       const sharedBadge = x.es_compartida ? `<span style="font-size:10px;background:rgba(0,212,170,0.12);color:var(--accent2);border-radius:4px;padding:1px 5px;margin-left:4px">💑</span>` : '';
       const esMio = x.user_id === currentUser.id;
 
-      // Columna Referencia: muestra precio/u, tachado sin promo si hay descuento, ahorro
       const refCell = precioRef ? `
         <div>
           <div style="font-size:13px;color:var(--muted)">${fmtARS(precioRef)}<span style="font-size:10px">/u</span></div>
@@ -4965,7 +4837,6 @@ function renderCompras() {
           ${totalFinal === null ? `<button onclick="confirmarPrecioRef('${x.id}')" style="margin-top:4px;background:rgba(0,212,170,0.15);border:1px solid rgba(0,212,170,0.3);color:var(--accent2);border-radius:6px;padding:2px 7px;font-size:11px;cursor:pointer;white-space:nowrap">✓ Confirmar</button>` : ''}
         </div>` : '<span style="color:var(--muted)">—</span>';
 
-      // Columna Final pagado: input = total pagado, diferencia vs referencia
       const finalCell = `
         <div>
           <input type="number" value="${totalFinal !== null ? totalFinal : ''}" placeholder="total $" min="0"
@@ -4973,6 +4844,14 @@ function renderCompras() {
             style="width:95px;background:var(--surface2);border:1px solid ${totalFinal !== null ? 'var(--accent2)' : 'var(--border)'};border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;outline:none;display:block;margin-bottom:3px">
           ${difLabel}
         </div>`;
+
+      const moverCell = moverCol ? `
+        <td>
+          <select onchange="moverItemALista('${x.id}', this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;outline:none">
+            <option value="">➡️ Mover a...</option>
+            ${listasParaMover.map(l => `<option value="${l.id}">${l.nombre}</option>`).join('')}
+          </select>
+        </td>` : '';
 
       return `
       <tr>
@@ -4989,6 +4868,7 @@ function renderCompras() {
         <td>${refCell}</td>
         <td>${finalCell}</td>
         <td style="color:var(--muted);font-size:12px">${x.fecha_compra || '—'}</td>
+        ${moverCell}
         <td style="white-space:nowrap">
           ${esMio ? `<button style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;opacity:.7" onclick="openEditCompra('${x.id}')" title="Editar">✏️</button>
           <button class="del-btn" onclick="deleteCompraItem('${x.id}')">🗑</button>` : ''}
@@ -5006,11 +4886,84 @@ function renderCompras() {
         ${subtotalLabel}
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Ítem</th><th>Cant.</th><th>Lugar</th><th>Referencia</th><th>Final pagado</th><th>Fecha</th><th></th></tr></thead>
+        <thead><tr><th>Ítem</th><th>Cant.</th><th>Lugar</th><th>Referencia</th><th>Final pagado</th><th>Fecha</th>${moverCol ? '<th></th>' : ''}<th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
   }).join('');
+}
+
+function renderCompras() {
+  initComprasMesSelect();
+  initComprasTemaSelect();
+  initComprasListaSelect();
+  renderComprasListasBar();
+  // Actualizar datalist de lugares con los ya usados
+  const datalist = document.getElementById('ci-lugar-sugerencias');
+  if (datalist) {
+    const lugares = [...new Set(db.comprasItems.filter(x => x.lugar).map(x => x.lugar))].sort();
+    datalist.innerHTML = lugares.map(l => `<option value="${l}">`).join('');
+  }
+  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
+  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
+  const soloPendientes = document.getElementById('ci-filter-pendientes')?.checked || false;
+
+  let items = db.comprasItems;
+  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
+  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
+  if (soloPendientes) items = items.filter(x => !x.comprado);
+
+  const pendientes = items.filter(x => !x.comprado).length;
+  const comprados = items.filter(x => x.comprado).length;
+  const gastoReal = items.filter(x => x.comprado && x.precio_real).reduce((s, x) => s + x.precio_real, 0);
+  const totalEstimado = items.filter(x => x.precio_estimado).reduce((s, x) => {
+    const ef = calcPrecioConPromo(x.precio_estimado, x.cantidad, x.promo, x.promo_extra);
+    return s + (ef ?? x.precio_estimado * x.cantidad);
+  }, 0);
+
+  document.getElementById('compras-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Pendientes</div><div class="card-value" style="color:var(--warn)">${pendientes}</div></div>
+    <div class="card"><div class="card-title">Comprados</div><div class="card-value" style="color:var(--green)">${comprados}</div></div>
+    <div class="card"><div class="card-title">Gasto real</div><div class="card-value amount-negative">${gastoReal > 0 ? fmtARS(gastoReal) : '—'}</div><div class="card-sub">${totalEstimado > 0 ? `Estimado total: ${fmtARS(totalEstimado)}` : ''}</div></div>`;
+
+  // Una sección por cada lista de compra abierta
+  const abiertas = db.comprasListas.filter(l => l.estado === 'abierta')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const container = document.getElementById('compras-lista-container');
+  container.innerHTML = abiertas.map(lista => {
+    const listaItems = items.filter(x => x.lista_id === lista.id);
+    const compradosLista = listaItems.filter(x => x.comprado && x.precio_real);
+    const totalLista = compradosLista.reduce((s, x) => s + x.precio_real, 0);
+    return `<div class="card" style="margin-bottom:16px;border:1px solid rgba(0,212,170,0.35)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${listaItems.length ? '4' : '0'}px">
+        <div>
+          <div style="font-weight:700;font-size:15px">🛒 ${lista.nombre}${lista.es_compartida ? ' 💑' : ''}</div>
+          <div style="font-size:12px;color:var(--muted)">${lista.fecha} · ${listaItems.length} ítem${listaItems.length === 1 ? '' : 's'}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${totalLista > 0 ? `<span style="font-size:13px;color:var(--muted)">Comprado: <strong style="color:var(--accent2)">${fmtARS(totalLista)}</strong></span>` : ''}
+          <button class="btn btn-ghost" onclick="cerrarListaSinRegistrar('${lista.id}')" style="font-size:11px;padding:5px 10px">Cerrar sin registrar</button>
+          <button class="btn btn-primary" onclick="finalizarCompra('${lista.id}')" ${compradosLista.length === 0 ? 'disabled style="font-size:12px;padding:6px 14px;opacity:.5"' : 'style="font-size:12px;padding:6px 14px;background:var(--accent2);border-color:var(--accent2)"'}>✅ Finalizar → Gastos</button>
+        </div>
+      </div>
+      ${listaItems.length ? `<div style="margin-top:12px">${buildComprasTable(listaItems)}</div>` : '<div class="empty-state" style="padding:16px 0">Todavía no le agregaste ítems. Usá "Agregar ítem" de arriba y elegí esta lista en "Agregar a".</div>'}
+    </div>`;
+  }).join('');
+
+  // Backlog: ítems sin lista asignada todavía
+  const backlogItems = items.filter(x => !x.lista_id);
+  const backlogContainer = document.getElementById('compras-backlog-container');
+  if (backlogItems.length === 0) {
+    backlogContainer.innerHTML = '';
+  } else {
+    backlogContainer.innerHTML = `
+      <div style="font-weight:600;margin:4px 0 10px;color:var(--muted);font-size:13px">📥 Backlog — para más adelante (${backlogItems.length})</div>
+      ${buildComprasTable(backlogItems, abiertas)}`;
+  }
+
+  if (abiertas.length === 0 && backlogItems.length === 0) {
+    container.innerHTML = '<div class="empty-state">No hay ítems todavía. Agregá uno arriba o armá una lista para empezar a comprar.</div>';
+  }
 }
 
 // ── Promo toggle helpers ──────────────────────────────────────────────────────
@@ -5151,32 +5104,23 @@ async function saveEditCompra() {
 }
 
 // ── Calculadora / Finalizar compra ────────────────────────────────────────────
-function resetCalc() {
-  // Desmarcar todos los ítems visibles como comprados
-  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
-  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
-  let items = db.comprasItems;
-  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
-  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
-  // Solo resetea el display, no cambia DB — el usuario decide qué marcar
-  renderCompras();
-  showToast('Calculadora reiniciada');
-}
+// Guarda qué lista se está finalizando entre abrir el modal y confirmar
+let _finalizandoListaId = null;
 
-function finalizarCompra() {
-  const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
-  const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
-  let items = db.comprasItems;
-  if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
-  if (temaFilter) items = items.filter(x => x.tema === temaFilter);
+function finalizarCompra(listaId) {
+  const lista = db.comprasListas.find(l => l.id === listaId);
+  if (!lista) { showToast('No se encontró la lista', 'error'); return; }
+  const items = db.comprasItems.filter(x => x.lista_id === listaId);
   const comprados = items.filter(x => x.comprado && x.precio_real);
-  if (comprados.length === 0) { showToast('No hay ítems comprados con precio real cargado', 'error'); return; }
+  if (comprados.length === 0) { showToast('No hay ítems comprados con precio real cargado en esta lista', 'error'); return; }
 
+  _finalizandoListaId = listaId;
   const total = comprados.reduce((s, x) => s + x.precio_real, 0);
 
   // Populate detalle
   const detalle = document.getElementById('fc-detalle');
-  detalle.innerHTML = comprados.map(x => `
+  detalle.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Lista: <strong style="color:var(--text)">${lista.nombre}</strong> · ${lista.fecha}</div>` +
+    comprados.map(x => `
     <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
       <span>${x.nombre}${x.cantidad > 1 ? ` x${x.cantidad}` : ''}</span>
       <span style="color:var(--accent2)">${fmtARS(x.precio_real)}</span>
@@ -5190,9 +5134,8 @@ function finalizarCompra() {
   // Fecha de hoy
   document.getElementById('fc-fecha').value = new Date().toISOString().slice(0, 10);
 
-  // Descripción sugerida
-  const mesLbl = mesFilter ? MONTHS[parseInt(mesFilter.split('-')[1]) - 1] + ' ' + mesFilter.split('-')[0] : 'compra';
-  document.getElementById('fc-desc').value = `Compras ${mesLbl}`;
+  // Descripción sugerida: el nombre de la lista, para poder rastrear después de qué compra vino
+  document.getElementById('fc-desc').value = lista.nombre;
 
   // Categorías
   const catSel = document.getElementById('fc-cat');
@@ -5255,6 +5198,8 @@ async function confirmarFinalizarCompra() {
     return parseFloat(raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
   })();
   if (!fecha || !desc || isNaN(montoNum) || montoNum <= 0) { showToast('Completá todos los campos', 'error'); return; }
+  const lista = db.comprasListas.find(l => l.id === _finalizandoListaId);
+  const notasTrazables = lista ? `Registrado desde Lista de Compras — lista "${lista.nombre}" (${lista.fecha})` : 'Registrado desde Lista de Compras';
   setBtnLoading('btn-confirmar-compra', true);
   // Si es crédito con cuotas, insertar como plan de cuotas; si es 1 cuota, insertar gasto simple
   if (isCredito && ncuotas > 1 && acredMes !== null && acredAnio !== null) {
@@ -5265,7 +5210,7 @@ async function confirmarFinalizarCompra() {
       let m = acredMes + i, y = acredAnio;
       while (m > 11) { m -= 12; y++; }
       const fechaCuota = `${y}-${String(m + 1).padStart(2, '0')}-${String(fecha.split('-')[2]).padStart(2, '0')}`;
-      cuotas.push({ user_id: currentUser.id, fecha: fechaCuota, descripcion: `${desc} (${i+1}/${ncuotas})`, monto: montoCuota, moneda: 'ARS', cat, tipo: 'cuota', medio, tarjeta_id: tarjetaId || null, plan_id: planId, cuota_num: i+1, total_cuotas: ncuotas, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras' });
+      cuotas.push({ user_id: currentUser.id, fecha: fechaCuota, descripcion: `${desc} (${i+1}/${ncuotas})`, monto: montoCuota, moneda: 'ARS', cat, tipo: 'cuota', medio, tarjeta_id: tarjetaId || null, plan_id: planId, cuota_num: i+1, total_cuotas: ncuotas, es_compartido: esCompartido, notas: notasTrazables });
     }
     const { error } = await sb.from('gastos').insert(cuotas);
     setBtnLoading('btn-confirmar-compra', false);
@@ -5277,20 +5222,52 @@ async function confirmarFinalizarCompra() {
       : fecha;
     const { error } = await sb.from('gastos').insert({
       user_id: currentUser.id, fecha: fechaGasto, descripcion: desc, monto: montoNum, moneda: 'ARS',
-      cat, tipo: 'regular', medio, tarjeta_id: tarjetaId || null, es_compartido: esCompartido, notas: 'Registrado desde Lista de Compras'
+      cat, tipo: 'regular', medio, tarjeta_id: tarjetaId || null, es_compartido: esCompartido, notas: notasTrazables
     });
     setBtnLoading('btn-confirmar-compra', false);
     if (error) { showToast(error.message, 'error'); return; }
   }
+  // Cerrar la lista para que no se siga mezclando con compras futuras
+  if (_finalizandoListaId) {
+    const cierre = { estado: 'cerrada', closed_at: new Date().toISOString() };
+    const { error: errCierre } = await sb.from('compras_listas').update(cierre).eq('id', _finalizandoListaId);
+    if (!errCierre && lista) Object.assign(lista, cierre);
+    _finalizandoListaId = null;
+  }
   await refreshGastosCompleto();
   closeModal('modal-finalizar-compra');
-  showToast('Gasto registrado ✓');
+  showToast('Gasto registrado ✓ — lista cerrada');
   renderDashboard();
+  renderCompras();
 }
 
 function renderComprasHistorial() {
   const container = document.getElementById('compras-historial-container');
   const conPrecio = db.comprasItems.filter(x => x.precio_real && x.mes_referencia);
+
+  // ── Listas de compra ya finalizadas/cerradas ───────────────────────────────
+  const cerradas = db.comprasListas.filter(l => l.estado === 'cerrada')
+    .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  let listasCerradasHTML = '';
+  if (cerradas.length > 0) {
+    const filas = cerradas.map(l => {
+      const litems = db.comprasItems.filter(x => x.lista_id === l.id);
+      const total = litems.filter(x => x.comprado && x.precio_real).reduce((s, x) => s + x.precio_real, 0);
+      return `<tr>
+        <td style="font-weight:500">${l.nombre}${l.es_compartida ? ' 💑' : ''}</td>
+        <td style="color:var(--muted)">${l.fecha}</td>
+        <td style="color:var(--muted);font-size:12px">${litems.length} ítems</td>
+        <td style="font-weight:600;text-align:right">${total > 0 ? fmtARS(total) : '—'}</td>
+      </tr>`;
+    }).join('');
+    listasCerradasHTML = `<div class="card" style="margin-bottom:20px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:12px">📦 Compras finalizadas</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Lista</th><th>Fecha</th><th>Ítems</th><th style="text-align:right">Total</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>
+    </div>`;
+  }
 
   // ── Sección 1: Evolución de precios por producto ──────────────────────────
   const porNombre = {};
@@ -5314,7 +5291,7 @@ function renderComprasHistorial() {
   const comparables = Object.entries(porProductoLugar).filter(([_, lug]) => Object.keys(lug).length >= 2);
 
   if (Object.keys(porNombre).length === 0) {
-    container.innerHTML = '<div class="empty-state">Aún no hay precios registrados. Completá el campo "Precio real" al comprar ítems.</div>';
+    container.innerHTML = listasCerradasHTML || '<div class="empty-state">Aún no hay precios registrados. Completá el campo "Precio real" al comprar ítems.</div>';
     return;
   }
 
@@ -5380,7 +5357,7 @@ function renderComprasHistorial() {
     </div>`;
   }).join('');
 
-  container.innerHTML = comparativaHTML + historialHTML;
+  container.innerHTML = listasCerradasHTML + comparativaHTML + historialHTML;
 }
 
 async function addTema() {
