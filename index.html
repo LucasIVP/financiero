@@ -3075,7 +3075,10 @@ function populateCatSelects(){
 function refreshEgRecurrentePanel(g) {
   const panel = document.getElementById('eg-recurrente-panel');
   if (!panel) return;
-  const esRecurrenteElegible = g && g.tipo !== 'inusual' && g.tipo !== 'ahorro';
+  // Recurrente disponible para cualquier tipo (mismo criterio que el form de Nuevo gasto,
+  // que ya lo permite para regular/inusual/ahorro). Antes se ocultaba para inusual/ahorro en edición,
+  // lo cual bloqueaba editar gastos que ya se habían creado como recurrentes con esos tipos.
+  const esRecurrenteElegible = !!g;
   panel.style.display = esRecurrenteElegible ? 'block' : 'none';
   if (esRecurrenteElegible) {
     document.getElementById('eg-recurrente').checked = !!g.recurrente && g.recurrente_activa !== false;
