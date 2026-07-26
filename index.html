@@ -168,6 +168,8 @@
   </div>
   <div class="grid-4" id="dash-kpis"></div>
   <div id="dash-pendientes" style="display:none;margin-bottom:20px"></div>
+  <div id="dash-grupales-vinculados" style="display:none;margin-bottom:20px"></div>
+  <div id="dash-prestamos-vinculados" style="display:none;margin-bottom:20px"></div>
   <div id="dash-objetivos" style="margin-bottom:20px"></div>
   <div class="grid-2">
     <div class="card"><div class="card-title">Gastos por categoría</div><div class="chart-container" style="height:220px"><canvas id="chart-cat"></canvas></div></div>
@@ -428,12 +430,18 @@
         <div class="form-group"><label>Tarjeta usada</label><select id="pt-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
         <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="pt-notas" placeholder="Opcional"></div>
       </div>
+      <div id="pt-vincular-wrap" style="display:none;margin:6px 0 10px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="pt-nuevo-vincular"> <span id="pt-vincular-label">Vincular a tu pareja (le va a aparecer en su propio dashboard)</span>
+        </label>
+      </div>
       <div id="pt-preview" style="margin:10px 0;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted)"></div>
       <div style="margin-top:14px;display:flex;gap:10px">
         <button class="btn btn-primary" id="btn-add-prestamo" onclick="addPrestamo()">+ Registrar préstamo</button>
         <button class="btn btn-ghost" onclick="clearPTForm()">Limpiar</button>
       </div>
     </div>
+    <div id="pt-vinculados-wrap" style="display:none;margin-bottom:20px"></div>
     <div class="grid-3" id="pt-kpis" style="margin-bottom:20px"></div>
     <div id="pt-lista"></div>
   </div>
@@ -629,6 +637,11 @@
           <input type="number" id="gg-nuevo-aporte" placeholder="Ya puso (opcional)" min="0" title="Cuánto puso esta persona al momento de pagar, si ya puso algo" style="width:140px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
           <button class="btn btn-ghost" onclick="addGGParticipante()" style="white-space:nowrap">+ Agregar</button>
         </div>
+        <div id="gg-vincular-wrap" style="display:none;margin-top:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="gg-nueva-vincular"> <span id="gg-vincular-label">Vincular a tu pareja (le va a aparecer en su propio dashboard)</span>
+          </label>
+        </div>
         <div id="gg-preview" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>
       </div>
       <div style="margin-top:14px;display:flex;gap:10px">
@@ -636,6 +649,7 @@
         <button class="btn btn-ghost" onclick="clearGGForm()">Limpiar</button>
       </div>
     </div>
+    <div id="gg-vinculados-wrap" style="display:none;margin-bottom:20px"></div>
     <div class="grid-3" id="gg-kpis" style="margin-bottom:20px"></div>
     <div id="gg-lista"></div>
   </div>
@@ -1244,6 +1258,11 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
       <input type="number" id="eg-nuevo-aporte" placeholder="Ya puso (opcional)" min="0" style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
       <button class="btn btn-ghost" onclick="agregarParticipanteEdit()">+ Agregar</button>
     </div>
+    <div id="eg-vincular-wrap" style="display:none;margin:-10px 0 16px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="eg-nuevo-vincular"> <span id="eg-vincular-label">Vincular a tu pareja (le va a aparecer en su propio dashboard)</span>
+      </label>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal('modal-edit-grupal')">Cerrar</button>
     </div>
@@ -1376,7 +1395,7 @@ function emptyDB() {
   return {
     gastos:[],ingresos:[],cuotas:[],inversiones:[],
     activos:[],deudas:[],patrimonioHistory:[],tarjetas:[],
-    prestamos:[],prestamosCuotas:[],
+    prestamos:[],prestamosCuotas:[],prestamosVinculados:[],prestamosCuotasVinculadas:[],
     categorias:defaultCategories(),
     subcategorias:[],
     comprasItems:[],comprasTemas:[],comprasListas:[],
@@ -1491,6 +1510,16 @@ async function loadAllData(){
     db.tarjetas=tc.data||[];
     db.prestamos=pt.data||[];
     db.prestamosCuotas=ptc.data||[];
+    // Préstamos donde YO soy la persona vinculada (los creó mi pareja y me corresponden a mí)
+    const { data: ptv } = await sb.from('prestamos_tc').select('*').eq('persona_user_id', uid).order('created_at');
+    db.prestamosVinculados = ptv || [];
+    const idsPtv = (ptv || []).map(p => p.id);
+    if (idsPtv.length) {
+      const { data: ptvc } = await sb.from('prestamos_cuotas').select('*').in('prestamo_id', idsPtv).order('fecha');
+      db.prestamosCuotasVinculadas = ptvc || [];
+    } else {
+      db.prestamosCuotasVinculadas = [];
+    }
     db.subcategorias=subcat.data||[];
     db.comprasItems=citems.data||[];
     db.comprasTemas=ctemas.data||[];
@@ -1564,6 +1593,16 @@ function innerTab(section,tab,evt){
   document.getElementById(`${section}-${tab}`).classList.add('active');
   evt.currentTarget.classList.add('active');
 }
+// Atajo desde el banner del dashboard: ir a Compartido → sub-tab Gastos grupales
+function irAGrupalesVinculados(){
+  goTo('compartido');
+  document.querySelectorAll('#page-compartido .inner-section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('#page-compartido .inner-tab').forEach(b=>b.classList.remove('active'));
+  const sec=document.getElementById('compartido-grupales'); if(sec)sec.classList.add('active');
+  const btn=[...document.querySelectorAll('#page-compartido .inner-tab')].find(b=>(b.getAttribute('onclick')||'').includes("'grupales'"));
+  if(btn)btn.classList.add('active');
+  renderGrupales();
+}
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
@@ -1592,8 +1631,10 @@ function getSuscripciones() {
 }
 
 // Obtener TODOS los gastos recurrentes del usuario (cualquier categoría, tipo Regular)
+// Incluye también los recurrentes de la pareja marcados es_compartido=true, para que
+// generen su fila virtual del mes tanto en Compartido como en Mes/Historial/Análisis propios.
 function getTodosRecurrentes() {
-  const todos = (db.gastos || []).filter(g => g.recurrente === true && g.user_id === currentUser.id);
+  const todos = (db.gastos || []).filter(g => g.recurrente === true && (g.user_id === currentUser.id || g.es_compartido === true));
   const vistos = new Set();
   return todos.filter(g => {
     const key = g.plan_id || g.id;
@@ -3118,6 +3159,57 @@ function renderDashboard(){
     pendDiv.style.display='none';
     pendDiv.innerHTML='';
   }
+  // Gastos grupales de la pareja donde estoy vinculado como participante (ej. "Tina" = yo)
+  const gvDiv=document.getElementById('dash-grupales-vinculados');
+  const misPartsPend=(dbCompartido.misParticipaciones||[]).filter(p=>{
+    const saldo=Math.max(0,toARS(p.monto_parte,p.moneda)-toARS(p.monto_aportado||0,p.moneda));
+    return !p.pagado && saldo>0;
+  });
+  if(gvDiv){
+    if(misPartsPend.length>0){
+      const totalGV=misPartsPend.reduce((s,p)=>s+Math.max(0,toARS(p.monto_parte,p.moneda)-toARS(p.monto_aportado||0,p.moneda)),0);
+      gvDiv.style.display='block';
+      gvDiv.innerHTML=`<div class="card" style="background:rgba(108,99,255,0.08);border-color:rgba(108,99,255,0.3);cursor:pointer" onclick="irAGrupalesVinculados()" title="Ver en Compartido → Gastos grupales">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">🔗</span>
+            <div>
+              <div style="font-weight:600;color:var(--accent)">Gastos grupales que te corresponden</div>
+              <div style="font-size:13px;color:var(--muted)">${misPartsPend.length} pendiente${misPartsPend.length!==1?'s':''} vinculado${misPartsPend.length!==1?'s':''} a tu cuenta</div>
+            </div>
+          </div>
+          <div style="font-weight:700;color:var(--accent);font-size:18px">${fmtARS(totalGV)}</div>
+        </div>
+      </div>`;
+    } else {
+      gvDiv.style.display='none';
+      gvDiv.innerHTML='';
+    }
+  }
+  // Préstamos de tarjeta de la pareja donde estoy vinculado como persona
+  const ptDiv=document.getElementById('dash-prestamos-vinculados');
+  const cuotasPtPend=(db.prestamosCuotasVinculadas||[]).filter(c=>!c.cobrada);
+  if(ptDiv){
+    if(cuotasPtPend.length>0){
+      const totalPT=cuotasPtPend.reduce((s,c)=>s+toARS(c.monto,c.moneda),0);
+      ptDiv.style.display='block';
+      ptDiv.innerHTML=`<div class="card" style="background:rgba(108,99,255,0.08);border-color:rgba(108,99,255,0.3);cursor:pointer" onclick="goTo('tarjetas');document.querySelectorAll('#page-tarjetas .inner-tab')[3]?.click()" title="Ver en Tarjetas → Préstamos">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">🔗</span>
+            <div>
+              <div style="font-weight:600;color:var(--accent)">Préstamos de tarjeta que te corresponden</div>
+              <div style="font-size:13px;color:var(--muted)">${cuotasPtPend.length} cuota${cuotasPtPend.length!==1?'s':''} pendiente${cuotasPtPend.length!==1?'s':''} vinculada${cuotasPtPend.length!==1?'s':''} a tu cuenta</div>
+            </div>
+          </div>
+          <div style="font-weight:700;color:var(--accent);font-size:18px">${fmtARS(totalPT)}</div>
+        </div>
+      </div>`;
+    } else {
+      ptDiv.style.display='none';
+      ptDiv.innerHTML='';
+    }
+  }
   renderObjetivosDashboard(tI, tG, bal);
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
@@ -3175,7 +3267,7 @@ async function init(){
 // Lee ingresos de tabla ingresos (ambos usuarios)
 // ============================================================
 
-let dbCompartido = { gastos: [], ingresos: [], vaquita: [], grupales: [], grupalesParticipantes: [] };
+let dbCompartido = { gastos: [], ingresos: [], vaquita: [], grupales: [], grupalesParticipantes: [], misParticipaciones: [], grupalesVinculados: [] };
 
 async function loadCompartido() {
   // Gastos marcados como compartidos (todos los usuarios)
@@ -3184,14 +3276,24 @@ async function loadCompartido() {
   const { data: ingresos } = await sb.from('ingresos').select('*').order('fecha', { ascending: false });
   // Vaquita
   const { data: vaquita } = await sb.from('vaquita').select('*').order('fecha', { ascending: false });
-  // Gastos grupales
+  // Gastos grupales (los que yo creé)
   const { data: grupales } = await sb.from('gastos_grupales').select('*').eq('user_id', currentUser.id).order('fecha', { ascending: false });
   const { data: grupalesPart } = await sb.from('gastos_grupales_participantes').select('*').eq('user_id', currentUser.id);
+  // Participaciones donde YO soy la persona vinculada (gastos grupales de mi pareja que me corresponden a mí)
+  const { data: misParticipaciones } = await sb.from('gastos_grupales_participantes').select('*').eq('persona_user_id', currentUser.id);
+  const idsVinculados = [...new Set((misParticipaciones || []).map(p => p.gasto_grupal_id))];
+  let grupalesVinculados = [];
+  if (idsVinculados.length) {
+    const { data: gv } = await sb.from('gastos_grupales').select('*').in('id', idsVinculados);
+    grupalesVinculados = gv || [];
+  }
   dbCompartido.gastos = gastos || [];
   dbCompartido.ingresos = ingresos || [];
   dbCompartido.vaquita = vaquita || [];
   dbCompartido.grupales = grupales || [];
   dbCompartido.grupalesParticipantes = grupalesPart || [];
+  dbCompartido.misParticipaciones = misParticipaciones || [];
+  dbCompartido.grupalesVinculados = grupalesVinculados;
 }
 
 function calcProporcionMes(month, year) {
@@ -3395,7 +3497,26 @@ function renderVaquita() {
 // GASTOS GRUPALES
 // ============================================================
 
-let ggParticipantes = []; // [{nombre, rol, aportado}] — yo no está acá, se agrega al guardar
+let ggParticipantes = []; // [{nombre, rol, aportado, personaUserId}] — yo no está acá, se agrega al guardar
+
+// Muestra/oculta y etiqueta el checkbox "Vincular a tu pareja" en los formularios de participantes,
+// según si hay un vínculo confirmado en `parejas`.
+function actualizarVinculoUI() {
+  const pareja = miParejaActual();
+  const wrapNew = document.getElementById('gg-vincular-wrap');
+  const wrapEdit = document.getElementById('eg-vincular-wrap');
+  const wrapPt = document.getElementById('pt-vincular-wrap');
+  if (pareja) {
+    const label = `Vincular a ${pareja.partnerEmail || 'tu pareja'} (le va a aparecer en su propio dashboard)`;
+    if (wrapNew) { wrapNew.style.display = 'block'; document.getElementById('gg-vincular-label').textContent = label; }
+    if (wrapEdit) { wrapEdit.style.display = 'block'; document.getElementById('eg-vincular-label').textContent = label; }
+    if (wrapPt) { wrapPt.style.display = 'block'; document.getElementById('pt-vincular-label').textContent = label; }
+  } else {
+    if (wrapNew) wrapNew.style.display = 'none';
+    if (wrapEdit) wrapEdit.style.display = 'none';
+    if (wrapPt) wrapPt.style.display = 'none';
+  }
+}
 
 function updateGGPreview() {
   const monto = parseFloat(document.getElementById('gg-monto').value) || 0;
@@ -3419,7 +3540,7 @@ function renderGGParticipantesList() {
     const saldo = parte - aportado;
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border-radius:8px">
-      <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}</span>
+      <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}${p.personaUserId ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}</span>
       <span style="font-size:12px;color:${p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.rol==='me_debe'?'Me debe':'Le debo'}</span>
       ${monto > 0 ? `<span style="font-size:13px;font-weight:600;min-width:80px;text-align:right" title="Le corresponde ${fmtARS(parte)}${aportado>0?` · Ya puso ${fmtARS(aportado)}`:''}">Saldo: ${fmtARS(saldo)}</span>` : ''}
       <button class="del-btn" onclick="removeGGParticipante(${i})">✕</button>
@@ -3431,13 +3552,16 @@ function addGGParticipante() {
   const nombre = document.getElementById('gg-nueva-persona').value.trim();
   const rol = document.getElementById('gg-nuevo-rol').value;
   const aportado = parseFloat(document.getElementById('gg-nuevo-aporte')?.value) || 0;
+  const vincularEl = document.getElementById('gg-nueva-vincular');
+  const personaUserId = (vincularEl && vincularEl.checked) ? (miParejaActual()?.partnerId || null) : null;
   if (!nombre) { showToast('Ingresá un nombre', 'error'); return; }
   if (ggParticipantes.find(p => p.nombre.toLowerCase() === nombre.toLowerCase())) {
     showToast('Ya está en la lista', 'error'); return;
   }
-  ggParticipantes.push({ nombre, rol, aportado });
+  ggParticipantes.push({ nombre, rol, aportado, personaUserId });
   document.getElementById('gg-nueva-persona').value = '';
   const aporteEl = document.getElementById('gg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
+  if (vincularEl) vincularEl.checked = false;
   updateGGPreview();
 }
 
@@ -3495,6 +3619,7 @@ function abrirEditGrupal(grupalId) {
   document.getElementById('eg-grupal-monto').value = g.monto || '';
   document.getElementById('eg-grupal-moneda').value = g.moneda || 'ARS';
   renderEditGrupalLista(grupalId);
+  actualizarVinculoUI();
   openModal('modal-edit-grupal');
 }
 
@@ -3534,12 +3659,26 @@ function renderEditGrupalLista(grupalId) {
 
   document.getElementById('eg-grupal-lista').innerHTML = parts.map(p => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
-      <span style="flex:1;font-size:13px;font-weight:500;min-width:80px">${p.nombre}</span>
+      <span style="flex:1;font-size:13px;font-weight:500;min-width:80px">${p.nombre}${p.persona_user_id ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}</span>
       <span style="font-size:12px;color:${p.es_yo?'var(--accent)':p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.es_yo?'Yo':p.rol==='me_debe'?'Me debe':'Le debo'}</span>
       <span style="font-size:13px;font-weight:600;min-width:80px;text-align:right">${g?.moneda==='USD'?fmtUSD(p.monto_parte):fmtARS(p.monto_parte)}</span>
       ${!p.es_yo ? `<input type="number" min="0" value="${p.monto_aportado||0}" title="Cuánto ya puso" onchange="actualizarAporteParticipante('${p.id}', this.value)" style="width:100px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;outline:none">` : ''}
+      ${!p.es_yo ? `<button class="del-btn" title="${p.persona_user_id ? 'Vinculado — click para desvincular' : 'Vincular a tu pareja'}" onclick="toggleVincularParticipanteEdit('${p.id}')">${p.persona_user_id ? '🔗' : '🔓'}</button>` : ''}
       ${!p.es_yo ? `<button class="del-btn" onclick="quitarParticipanteEdit('${p.id}','${grupalId}')">✕</button>` : ''}
     </div>`).join('');
+}
+
+async function toggleVincularParticipanteEdit(partId) {
+  const p = dbCompartido.grupalesParticipantes.find(x => x.id === partId);
+  if (!p) return;
+  const pareja = miParejaActual();
+  if (!p.persona_user_id && !pareja) { showToast('No tenés una pareja vinculada en Configuración', 'error'); return; }
+  const nuevoValor = p.persona_user_id ? null : pareja.partnerId;
+  const { error } = await sb.from('gastos_grupales_participantes').update({ persona_user_id: nuevoValor }).eq('id', partId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  p.persona_user_id = nuevoValor;
+  renderEditGrupalLista(p.gasto_grupal_id);
+  showToast(nuevoValor ? 'Participante vinculado ✓' : 'Vínculo quitado');
 }
 
 async function actualizarAporteParticipante(partId, value) {
@@ -3560,6 +3699,8 @@ async function agregarParticipanteEdit() {
   const nombre = document.getElementById('eg-nueva-persona').value.trim();
   const rol = document.getElementById('eg-nuevo-rol').value;
   const aportado = parseFloat(document.getElementById('eg-nuevo-aporte')?.value) || 0;
+  const vincularEl = document.getElementById('eg-nuevo-vincular');
+  const personaUserId = (vincularEl && vincularEl.checked) ? (miParejaActual()?.partnerId || null) : null;
   if (!nombre) { showToast('Ingresá un nombre', 'error'); return; }
 
   const g = dbCompartido.grupales.find(x => x.id === grupalId);
@@ -3581,13 +3722,14 @@ async function agregarParticipanteEdit() {
 
   // Insert new participant
   const { data: newP, error } = await sb.from('gastos_grupales_participantes')
-    .insert({ gasto_grupal_id: grupalId, user_id: currentUser.id, nombre, es_yo: false, rol, monto_parte: parteMonto, moneda: g.moneda, pagado: aportado >= parteMonto, monto_aportado: aportado })
+    .insert({ gasto_grupal_id: grupalId, user_id: currentUser.id, nombre, es_yo: false, rol, monto_parte: parteMonto, moneda: g.moneda, pagado: aportado >= parteMonto, monto_aportado: aportado, persona_user_id: personaUserId })
     .select().single();
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
 
   dbCompartido.grupalesParticipantes.push(newP);
   document.getElementById('eg-nueva-persona').value = '';
   const aporteEl = document.getElementById('eg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
+  if (vincularEl) vincularEl.checked = false;
   renderEditGrupalLista(grupalId);
   renderGrupales();
   showToast('Participante agregado ✓');
@@ -3649,7 +3791,8 @@ async function addGastoGrupal() {
     { gasto_grupal_id: ggData.id, user_id: currentUser.id, nombre: 'Yo', es_yo: true, rol: 'yo', monto_parte: parteMonto, moneda, pagado: true, monto_aportado: parteMonto },
     ...ggParticipantes.map(p => ({
       gasto_grupal_id: ggData.id, user_id: currentUser.id, nombre: p.nombre,
-      es_yo: false, rol: p.rol, monto_parte: parteMonto, moneda, pagado: (p.aportado||0) >= parteMonto, monto_aportado: p.aportado || 0
+      es_yo: false, rol: p.rol, monto_parte: parteMonto, moneda, pagado: (p.aportado||0) >= parteMonto, monto_aportado: p.aportado || 0,
+      persona_user_id: p.personaUserId || null
     }))
   ];
 
@@ -3729,11 +3872,44 @@ async function deleteGastoGrupal(id) {
   });
 }
 
+function renderGrupalesVinculados() {
+  const wrap = document.getElementById('gg-vinculados-wrap');
+  if (!wrap) return;
+  const misParts = dbCompartido.misParticipaciones || [];
+  if (misParts.length === 0) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'block';
+  const filas = misParts.map(p => {
+    const g = (dbCompartido.grupalesVinculados || []).find(x => x.id === p.gasto_grupal_id);
+    const saldoPend = Math.max(0, toARS(p.monto_parte, p.moneda) - toARS(p.monto_aportado || 0, p.moneda));
+    const estado = p.pagado || saldoPend <= 0
+      ? `<span style="color:var(--green);font-weight:600">✓ Saldado</span>`
+      : `<span style="color:var(--warn);font-weight:600">Debés ${fmtARS(saldoPend)}</span>`;
+    return `<tr>
+      <td style="color:var(--muted)">${g?.fecha || '—'}</td>
+      <td style="font-weight:500">${g?.descripcion || '(gasto grupal)'}</td>
+      <td>${p.moneda === 'USD' ? fmtUSD(p.monto_parte) : fmtARS(p.monto_parte)}</td>
+      <td style="font-size:13px;font-weight:600">${estado}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:10px">🔗 Gastos grupales de tu pareja que te corresponden a vos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tu parte</th><th>Estado</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 function renderGrupales() {
   // Set today's date in form if empty
   const fechaEl = document.getElementById('gg-fecha');
   if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
   renderGGParticipantesList();
+  renderGrupalesVinculados();
+  actualizarVinculoUI();
 
   const grupales = dbCompartido.grupales;
   const partsAll = dbCompartido.grupalesParticipantes;
@@ -3894,6 +4070,7 @@ function clearPTForm() {
   ['pt-desc','pt-persona','pt-monto','pt-notas'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   const ncuotas = document.getElementById('pt-ncuotas'); if(ncuotas) ncuotas.value='';
   const prev = document.getElementById('pt-preview'); if(prev) prev.textContent='';
+  const vincularEl = document.getElementById('pt-nuevo-vincular'); if(vincularEl) vincularEl.checked = false;
 }
 
 async function addPrestamo() {
@@ -3906,6 +4083,8 @@ async function addPrestamo() {
   const anioInicio = parseInt(document.getElementById('pt-anio-inicio').value);
   const tarjetaId = document.getElementById('pt-tarjeta-id').value || null;
   const notas = document.getElementById('pt-notas').value.trim();
+  const vincularEl = document.getElementById('pt-nuevo-vincular');
+  const personaUserId = (vincularEl && vincularEl.checked) ? (miParejaActual()?.partnerId || null) : null;
 
   if (!desc || !persona || isNaN(monto) || monto <= 0 || !ncuotas || ncuotas < 1) {
     showToast('Completá descripción, persona, monto y cuotas.', 'error'); return;
@@ -3916,7 +4095,7 @@ async function addPrestamo() {
 
   // Insert prestamo header
   const { data: ptData, error: ptErr } = await sb.from('prestamos_tc')
-    .insert({ user_id: currentUser.id, descripcion: desc, persona, tarjeta_id: tarjetaId, monto, moneda, ncuotas, mes_inicio: mesInicioStr, notas })
+    .insert({ user_id: currentUser.id, descripcion: desc, persona, tarjeta_id: tarjetaId, monto, moneda, ncuotas, mes_inicio: mesInicioStr, notas, persona_user_id: personaUserId })
     .select().single();
 
   if (ptErr) { showToast('Error: ' + ptErr.message, 'error'); setBtnLoading('btn-add-prestamo', false); return; }
@@ -3966,8 +4145,57 @@ async function deletePrestamo(prestamoId) {
   });
 }
 
+function renderPrestamosVinculados() {
+  const wrap = document.getElementById('pt-vinculados-wrap');
+  if (!wrap) return;
+  const cuotasVinc = db.prestamosCuotasVinculadas || [];
+  if (cuotasVinc.length === 0) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'block';
+  const porPrestamo = {};
+  cuotasVinc.forEach(c => { if (!porPrestamo[c.prestamo_id]) porPrestamo[c.prestamo_id] = []; porPrestamo[c.prestamo_id].push(c); });
+  const filas = Object.entries(porPrestamo).map(([prestamoId, cuotas]) => {
+    const p = (db.prestamosVinculados || []).find(x => x.id === prestamoId);
+    const pendientes = cuotas.filter(c => !c.cobrada);
+    const totalPend = pendientes.reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
+    const estado = pendientes.length === 0
+      ? `<span style="color:var(--green);font-weight:600">✓ Saldado</span>`
+      : `<span style="color:var(--warn);font-weight:600">${fmtARS(totalPend)} (${pendientes.length} cuota${pendientes.length!==1?'s':''})</span>`;
+    return `<tr>
+      <td style="font-weight:500">${p?.descripcion || '(préstamo)'}</td>
+      <td>${p?.moneda === 'USD' ? fmtUSD(p.monto) : fmtARS(p?.monto || 0)}</td>
+      <td>${cuotas.length}</td>
+      <td style="font-size:13px">${estado}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:10px">🔗 Préstamos de tu pareja que te corresponden a vos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Descripción</th><th>Total</th><th>Cuotas</th><th>Estado</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+async function toggleVincularPrestamo(prestamoId) {
+  const p = db.prestamos.find(x => x.id === prestamoId);
+  if (!p) return;
+  const pareja = miParejaActual();
+  if (!p.persona_user_id && !pareja) { showToast('No tenés una pareja vinculada en Configuración', 'error'); return; }
+  const nuevoValor = p.persona_user_id ? null : pareja.partnerId;
+  const { error } = await sb.from('prestamos_tc').update({ persona_user_id: nuevoValor }).eq('id', prestamoId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  p.persona_user_id = nuevoValor;
+  renderPrestamos();
+  showToast(nuevoValor ? 'Préstamo vinculado ✓' : 'Vínculo quitado');
+}
+
 function renderPrestamos() {
   initPTSelects();
+  actualizarVinculoUI();
+  renderPrestamosVinculados();
   const hoyYM = new Date().toISOString().slice(0, 7);
 
   // KPIs
@@ -4025,8 +4253,12 @@ function renderPrestamos() {
           <div>
             <span class="cuota-name">${prestamo.descripcion}</span>
             <span style="font-size:12px;color:var(--muted);margin-left:8px">${tarjetaNombre(prestamo.tarjeta_id)}</span>
+            ${prestamo.persona_user_id ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}
           </div>
-          <button class="del-btn" onclick="deletePrestamo('${prestamo.id}')">🗑</button>
+          <div>
+            <button class="del-btn" title="${prestamo.persona_user_id ? 'Vinculado — click para desvincular' : 'Vincular a tu pareja'}" onclick="toggleVincularPrestamo('${prestamo.id}')">${prestamo.persona_user_id ? '🔗' : '🔓'}</button>
+            <button class="del-btn" onclick="deletePrestamo('${prestamo.id}')">🗑</button>
+          </div>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
           ${prestamo.moneda==='USD'?fmtUSD(prestamo.monto/prestamo.ncuotas):fmtARS(prestamo.monto/prestamo.ncuotas)}/mes · Total: ${prestamo.moneda==='USD'?fmtUSD(prestamo.monto):fmtARS(prestamo.monto)}
