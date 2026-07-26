@@ -4908,7 +4908,14 @@ function renderCompras() {
   const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
   const soloPendientes = document.getElementById('ci-filter-pendientes')?.checked || false;
 
-  let items = db.comprasItems;
+  // Listas abiertas primero: todo lo demás (KPIs, tablas) se limita a backlog + estas listas.
+  // Los ítems de listas ya cerradas/finalizadas quedan fuera de "Lista actual" — viven en
+  // Historial → "Compras finalizadas", así los números de acá no arrastran compras viejas.
+  const abiertas = db.comprasListas.filter(l => l.estado === 'abierta')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const abiertasIds = new Set(abiertas.map(l => l.id));
+
+  let items = db.comprasItems.filter(x => !x.lista_id || abiertasIds.has(x.lista_id));
   if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
   if (temaFilter) items = items.filter(x => x.tema === temaFilter);
   if (soloPendientes) items = items.filter(x => !x.comprado);
@@ -4926,9 +4933,6 @@ function renderCompras() {
     <div class="card"><div class="card-title">Comprados</div><div class="card-value" style="color:var(--green)">${comprados}</div></div>
     <div class="card"><div class="card-title">Gasto real</div><div class="card-value amount-negative">${gastoReal > 0 ? fmtARS(gastoReal) : '—'}</div><div class="card-sub">${totalEstimado > 0 ? `Estimado total: ${fmtARS(totalEstimado)}` : ''}</div></div>`;
 
-  // Una sección por cada lista de compra abierta
-  const abiertas = db.comprasListas.filter(l => l.estado === 'abierta')
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const container = document.getElementById('compras-lista-container');
   container.innerHTML = abiertas.map(lista => {
     const listaItems = items.filter(x => x.lista_id === lista.id);
