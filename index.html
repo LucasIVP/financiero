@@ -196,8 +196,21 @@
 
   <!-- Tab: Mes -->
   <div id="gastos-gastos-mes" class="inner-section active">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:10px;align-items:center">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:10px;align-items:center;flex-wrap:wrap">
       <select id="g-cat-filter" onchange="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todas las categorías</option></select>
+      <select id="g-tipo-filter" onchange="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none">
+        <option value="">Todos los tipos</option>
+        <option value="regular">Regular</option>
+        <option value="inusual">Inusual</option>
+        <option value="ahorro">Ahorro</option>
+      </select>
+      <select id="g-medio-filter" onchange="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none">
+        <option value="">Todos los medios</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="debito">Débito</option>
+        <option value="credito">Crédito</option>
+        <option value="transferencia">Transferencia</option>
+      </select>
       <div class="month-selector"><select id="g-month" onchange="renderGastos()"></select><select id="g-year" onchange="renderGastos()"></select></div>
     </div>
     <div class="card" style="margin-bottom:20px">
@@ -247,6 +260,7 @@
         <button class="btn btn-ghost" onclick="clearGastoForm()">Limpiar</button>
       </div>
     </div>
+    <div class="grid-3" id="g-kpis" style="margin-bottom:20px"></div>
     <div class="card">
       <div class="section-header"><span style="font-weight:600" id="g-table-title">Lista de gastos</span><span id="g-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th style="text-align:center">Pagado</th><th></th></tr></thead><tbody id="g-table-body"></tbody></table></div>
@@ -274,10 +288,27 @@
         <div class="form-group"><label>Categoría</label>
           <select id="h-cat-filter" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"><option value="">Todas</option></select>
         </div>
+        <div class="form-group"><label>Tipo</label>
+          <select id="h-tipo-filter" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none">
+            <option value="">Todos</option>
+            <option value="regular">Regular</option>
+            <option value="inusual">Inusual</option>
+            <option value="ahorro">Ahorro</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Medio</label>
+          <select id="h-medio-filter" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none">
+            <option value="">Todos</option>
+            <option value="efectivo">Efectivo</option>
+            <option value="debito">Débito</option>
+            <option value="credito">Crédito</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </div>
         <button class="btn btn-primary" onclick="renderHistorial()">Ver historial</button>
       </div>
     </div>
-    <div id="h-kpis" class="grid-3" style="margin-bottom:20px"></div>
+    <div id="h-kpis" class="grid-4" style="margin-bottom:20px"></div>
     <div class="card">
       <div class="section-header"><span style="font-weight:600" id="h-table-title">Historial</span><span id="h-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th style="text-align:center">Pagado</th><th>Acción</th></tr></thead><tbody id="h-table-body"></tbody></table></div>
@@ -542,6 +573,8 @@
       <select id="comp-year" onchange="renderCompartido()"></select>
     </div>
   </div>
+
+  <div id="comp-total-deuda" style="margin-bottom:20px"></div>
 
   <div class="grid-3" id="comp-kpis" style="margin-bottom:20px"></div>
 
@@ -1009,10 +1042,14 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
           <span>Marcar como recurrente (se replica automáticamente en todos los meses)</span>
         </label>
         <div style="font-size:12px;color:var(--muted)">
-          Al activarlo, esta suscripción aparecerá proyectada en los meses siguientes. Si cambiás el monto, se usa ese valor desde ahora en adelante.
+          Al activarlo, esta suscripción aparecerá proyectada en los meses siguientes. Si cambiás el monto u otro dato, se usa el valor viejo hasta el mes anterior al elegido abajo, y el nuevo desde ese mes en adelante.
         </div>
         <div id="eg-recurrente-plan-note" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(255,179,71,0.1);border:1px solid rgba(255,179,71,0.3);border-radius:8px;font-size:12px;color:var(--warn)">
           ⚠️ Este gasto está registrado como plan de cuotas. Al activar recurrente, <strong>se eliminará el plan</strong> y se creará una suscripción mensual por el monto de una cuota.
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:160px"><label>Aplicar estos cambios a partir de</label><input type="month" id="eg-aplicar-desde" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;width:100%"></div>
+          <div style="font-size:12px;color:var(--muted);align-self:flex-end;padding-bottom:8px">Los meses anteriores a este quedan con el valor viejo</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="form-group" style="flex:1;min-width:160px"><label>Dar de baja desde (opcional)</label><input type="month" id="eg-fecha-fin-rec" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;width:100%"></div>
@@ -1997,17 +2034,35 @@ async function togglePagado(id, checked){
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const catFilter=document.getElementById('g-cat-filter')?.value||'';
+  const tipoFilter=document.getElementById('g-tipo-filter')?.value||'';
+  const medioFilter=document.getElementById('g-medio-filter')?.value||'';
   // Combinar gastos reales + suscripciones virtuales del mes
   let gastos=getGastosConSuscripciones(month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   if(catFilter) gastos=gastos.filter(g=>g.cat===catFilter);
+  if(tipoFilter) gastos=gastos.filter(g=>g.tipo===tipoFilter);
+  if(medioFilter) gastos=gastos.filter(g=>g.medio===medioFilter);
   document.getElementById('g-table-title').textContent=`Gastos — ${MONTHS[month]} ${year}`;
   const total=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
   document.getElementById('g-total-badge').textContent=gastos.length>0?`Total: ${fmtARS(total)}`:'';
+  // Control de pagado: cuánto del total del mes ya se marcó como pagado, en vivo a medida que se tilda
+  const gastosPagados=gastos.filter(g=>g.pagado!==false);
+  const gastosPendientes=gastos.filter(g=>g.pagado===false);
+  const totalPagado=gastosPagados.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
+  const totalPendienteG=total-totalPagado;
+  const pctPagado=total>0?Math.round(totalPagado/total*100):0;
+  const kpisG=document.getElementById('g-kpis');
+  if(kpisG){
+    kpisG.innerHTML=gastos.length===0?'':`
+      <div class="card"><div class="card-title">Total del mes</div><div class="card-value amount-negative">${fmtARS(total)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div>
+      <div class="card"><div class="card-title">Pagado</div><div class="card-value amount-positive">${fmtARS(totalPagado)}</div><div class="card-sub">${gastosPagados.length} de ${gastos.length} · ${pctPagado}%</div><div class="progress-wrap"><div class="progress-bar" style="width:${pctPagado}%;background:var(--green)"></div></div></div>
+      <div class="card"><div class="card-title">Pendiente</div><div class="card-value" style="color:var(--warn)">${fmtARS(totalPendienteG)}</div><div class="card-sub">${gastosPendientes.length} sin pagar</div></div>`;
+  }
   const tbody=document.getElementById('g-table-body'),empty=document.getElementById('g-empty');
   if(gastos.length===0){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   const tc={regular:'#6c63ff',inusual:'#ffb347',ahorro:'#00d4aa'};
   const{month:gMonth,year:gYear}=getSelectedMonthYear('g-month','g-year');
+  const ymStrMes=`${gYear}-${String(gMonth+1).padStart(2,'0')}`;
   tbody.innerHTML=gastos.map(g=>{
     const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};
     const subcat=g.subcat_id?db.subcategorias.find(s=>s.id===g.subcat_id):null;
@@ -2017,7 +2072,7 @@ function renderGastos(){
     const recBadge=g.recurrente?` <span style="font-size:11px;color:var(--accent)" title="Suscripción recurrente">🔁</span>`:'';
     const bajaBtnMes=g.recurrente?`<button class="del-btn" title="Dar de baja suscripción" onclick="darDeBajaSuscripcion('${g.id}')" style="color:#ff4d6d;font-size:13px;font-weight:700">✕</button>`:'';
     const acciones=g.user_id===currentUser.id
-      ?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}')">✏️</button><button class="del-btn" style="margin-right:2px" onclick="deleteGasto('${g.id}')">🗑</button>${bajaBtnMes}`
+      ?`<button class="del-btn" style="margin-right:2px" onclick="abrirEditGasto('${g.id}','${ymStrMes}')">✏️</button><button class="del-btn" style="margin-right:2px" onclick="deleteGasto('${g.id}')">🗑</button>${bajaBtnMes}`
       :'<span style="font-size:11px;color:var(--muted)">ajeno</span>';
     const estaPagado=g.pagado!==false;
     const pendBadge=estaPagado?'':` <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>`;
@@ -2371,9 +2426,15 @@ async function deletePlanCuotas(planId) {
 }
 
 // EDITAR GASTO
-function abrirEditGasto(id) {
+// Mes ("YYYY-MM") desde el que se abrió el modal de edición, si se abrió desde una fila puntual
+// de Mes (que puede ser la instancia virtual de un recurrente en un mes distinto al de su fila real).
+// Se usa para default del campo "Aplicar estos cambios a partir de".
+let _egEditContextoMes = null;
+
+function abrirEditGasto(id, mesCtx) {
   const g = db.gastos.find(x => x.id === id);
   if (!g) return;
+  _egEditContextoMes = mesCtx || null;
   document.getElementById('eg-id').value = id;
   document.getElementById('eg-plan-id').value = g.plan_id || '';
   document.getElementById('eg-fecha').value = g.fecha;
@@ -2420,6 +2481,7 @@ async function saveEditGasto() {
   const notas = document.getElementById('eg-notas').value.trim();
   const tarjetaId = document.getElementById('eg-tarjeta-id').value || null;
   const esCompartido = document.getElementById('eg-compartido').checked;
+  let serieSeparada = false, serieSeparadaDesde = '';
 
   if (!fecha || !desc || isNaN(monto)) { showToast('Completá los campos requeridos', 'error'); return; }
   setBtnLoading('btn-save-gasto', true);
@@ -2486,19 +2548,50 @@ async function saveEditGasto() {
     const g = db.gastos.find(x => x.id === id);
     const egPagado = document.getElementById('eg-pagado')?.checked ?? true;
     const egAportePareja = esCompartido ? (parseFloat(document.getElementById('eg-aporte-pareja')?.value) || null) : null;
-    const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado, aporte_pareja: egAportePareja };
-    // Si la categoría es Suscripciones, guardar siempre los campos recurrentes
-    if (true || (g && g.recurrente)) {
-      const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
-      const fechaFinRaw = (document.getElementById('eg-fecha-fin-rec')?.value || '').trim();
-      const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null; // "YYYY-MM" → "YYYY-MM-01" o null
+    const recActiva = document.getElementById('eg-recurrente')?.checked ?? false;
+    const fechaFinRaw = (document.getElementById('eg-fecha-fin-rec')?.value || '').trim();
+    const fechaFin = fechaFinRaw.length === 7 ? fechaFinRaw + '-01' : null; // "YYYY-MM" → "YYYY-MM-01" o null
+
+    // ¿Hay que "partir" la serie recurrente para no pisar meses ya transcurridos?
+    // Solo aplica si YA era recurrente antes de este guardado (si se activa recién ahora, no hay historial que proteger)
+    // y el usuario eligió un mes posterior al de inicio del maestro para aplicar los cambios.
+    const aplicarDesdeRaw = (document.getElementById('eg-aplicar-desde')?.value || '').trim();
+    const eraRecurrente = !!(g && g.recurrente);
+    const mesInicioMaster = g ? (g.fecha || '').slice(0, 7) : '';
+    const camposCambiaron = !!g && (
+      Math.round((monto || 0) * 100) !== Math.round((g.monto || 0) * 100) ||
+      moneda !== (g.moneda || 'ARS') ||
+      cat !== g.cat ||
+      tipo !== (g.tipo || 'regular') ||
+      medio !== (g.medio || 'efectivo') ||
+      notas !== (g.notas || '') ||
+      tarjetaId !== (g.tarjeta_id || null) ||
+      esCompartido !== !!g.es_compartido
+    );
+    const debeSepararSerie = eraRecurrente && recActiva && aplicarDesdeRaw && aplicarDesdeRaw > mesInicioMaster && camposCambiaron;
+
+    if (debeSepararSerie) {
+      const aplicarDesdeStr = aplicarDesdeRaw + '-01';
+      // 1. La fila vieja deja de proyectarse desde aplicarDesde en adelante — conserva su monto/valores viejos para los meses anteriores
+      const { error: errViejo } = await sb.from('gastos').update({ fecha_fin_recurrencia: aplicarDesdeStr }).eq('id', id);
+      if (errViejo) { showToast('Error: ' + errViejo.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
+      // 2. Fila nueva con los valores editados, vigente desde aplicarDesde en adelante
+      const { error: errNuevo } = await sb.from('gastos').insert({
+        user_id: currentUser.id, fecha: aplicarDesdeStr, descripcion: desc, monto, moneda, cat, tipo, medio, notas,
+        tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado, aporte_pareja: egAportePareja,
+        subcat_id: g.subcat_id || null, recurrente: true, recurrente_activa: recActiva, fecha_fin_recurrencia: fechaFin
+      });
+      if (errNuevo) { showToast('Error: ' + errNuevo.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
+      serieSeparada = true;
+      serieSeparadaDesde = `${MONTHS[parseInt(aplicarDesdeRaw.split('-')[1], 10) - 1]} ${aplicarDesdeRaw.split('-')[0]}`;
+    } else {
+      const updateObj = { fecha, descripcion: desc, monto, moneda, cat, tipo, medio, notas, tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado, aporte_pareja: egAportePareja };
       updateObj.recurrente = recActiva;
       updateObj.recurrente_activa = recActiva;
       updateObj.fecha_fin_recurrencia = fechaFin;
-      console.log('[recurrente] update obj:', JSON.stringify({recurrente: recActiva, recurrente_activa: recActiva, fecha_fin_recurrencia: fechaFin}));
+      const { error } = await sb.from('gastos').update(updateObj).eq('id', id);
+      if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
     }
-    const { error } = await sb.from('gastos').update(updateObj).eq('id', id);
-    if (error) { showToast(error.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
   }
 
   const recActivado = !!document.getElementById('eg-recurrente')?.checked;
@@ -2507,8 +2600,11 @@ async function saveEditGasto() {
   closeModal('modal-edit-gasto');
   renderGastos();
   renderDashboard();
+  renderRecurrentes();
   if (recActivado) renderSuscripciones();
-  showToast(recActivado ? '🔁 Suscripción recurrente activada ✓' : 'Gasto actualizado ✓');
+  showToast(serieSeparada
+    ? `✓ Aplicado desde ${serieSeparadaDesde} en adelante — meses anteriores conservan el valor viejo`
+    : (recActivado ? '🔁 Suscripción recurrente activada ✓' : 'Gasto actualizado ✓'));
 }
 
 // CONVERTIR DESDE MODAL EDICIÓN
@@ -2603,9 +2699,14 @@ function renderHistorial() {
   const hastaDate = new Date(hastaY, hastaM + 1, 0);
 
   const catFilterH = document.getElementById('h-cat-filter')?.value||'';
+  const tipoFilterH = document.getElementById('h-tipo-filter')?.value||'';
+  const medioFilterH = document.getElementById('h-medio-filter')?.value||'';
   const gastos = db.gastos.filter(g => {
     const d = new Date(g.fecha + 'T12:00:00');
-    return d >= desdeDate && d <= hastaDate && (!catFilterH || g.cat === catFilterH);
+    return d >= desdeDate && d <= hastaDate
+      && (!catFilterH || g.cat === catFilterH)
+      && (!tipoFilterH || g.tipo === tipoFilterH)
+      && (!medioFilterH || g.medio === medioFilterH);
   }).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   document.getElementById('h-table-title').textContent =
@@ -2615,11 +2716,15 @@ function renderHistorial() {
   const porCat = {};
   gastos.forEach(g => { const v = gastoEfectivo(g, new Date(g.fecha+'T12:00:00').getMonth(), new Date(g.fecha+'T12:00:00').getFullYear()); porCat[g.cat]=(porCat[g.cat]||0)+v; });
   const topCat = Object.entries(porCat).sort((a,b)=>b[1]-a[1])[0];
+  // Control de pagado del período (mismo criterio que en Mes, en vivo a medida que se tilda)
+  const totalPagadoH = gastos.filter(g=>g.pagado!==false).reduce((s,g)=>s+gastoEfectivo(g, new Date(g.fecha+'T12:00:00').getMonth(), new Date(g.fecha+'T12:00:00').getFullYear()),0);
+  const pctPagadoH = total>0 ? Math.round(totalPagadoH/total*100) : 0;
 
   document.getElementById('h-kpis').innerHTML = `
     <div class="card"><div class="card-title">Total del período</div><div class="card-value amount-negative">${fmtARS(total)}</div><div class="card-sub">${gastos.length} movimientos</div></div>
     <div class="card"><div class="card-title">Promedio mensual</div><div class="card-value">${fmtARS(total / Math.max(1,(hastaY-desdeY)*12+(hastaM-desdeM)+1))}</div></div>
-    <div class="card"><div class="card-title">Mayor categoría</div><div class="card-value" style="font-size:18px">${topCat ? topCat[0] : '—'}</div><div class="card-sub">${topCat ? fmtARS(topCat[1]) : ''}</div></div>`;
+    <div class="card"><div class="card-title">Mayor categoría</div><div class="card-value" style="font-size:18px">${topCat ? topCat[0] : '—'}</div><div class="card-sub">${topCat ? fmtARS(topCat[1]) : ''}</div></div>
+    <div class="card"><div class="card-title">Pagado</div><div class="card-value amount-positive">${fmtARS(totalPagadoH)}</div><div class="card-sub">${pctPagadoH}% del período</div><div class="progress-wrap"><div class="progress-bar" style="width:${pctPagadoH}%;background:var(--green)"></div></div></div>`;
 
   document.getElementById('h-total-badge').textContent = gastos.length > 0 ? `Total: ${fmtARS(total)}` : '';
   const tbody = document.getElementById('h-table-body');
@@ -2975,6 +3080,11 @@ function refreshEgRecurrentePanel(g) {
   if (esRecurrenteElegible) {
     document.getElementById('eg-recurrente').checked = !!g.recurrente && g.recurrente_activa !== false;
     document.getElementById('eg-fecha-fin-rec').value = g.fecha_fin_recurrencia ? g.fecha_fin_recurrencia.slice(0,7) : '';
+    // "Aplicar desde": si se abrió desde una fila puntual de Mes, default a ese mes (ej. Octubre).
+    // Si no hay ese contexto (ej. desde la pestaña Recurrentes), default al propio mes de inicio
+    // del recurrente — así por default NO se separa la serie, salvo que el usuario elija otro mes.
+    const aplicarDesdeEl = document.getElementById('eg-aplicar-desde');
+    if (aplicarDesdeEl) aplicarDesdeEl.value = _egEditContextoMes || (g.fecha ? g.fecha.slice(0,7) : '');
     // Mostrar advertencia si tiene plan_id
     const planNote = document.getElementById('eg-recurrente-plan-note');
     if (planNote) planNote.style.display = g.plan_id ? 'block' : 'none';
@@ -3427,6 +3537,64 @@ function renderCompartido() {
   }
 
   renderVaquita();
+  renderTotalDeudaPareja();
+}
+
+// Total consolidado: cuánto le debo a mi pareja en total, sumando las 3 fuentes de deuda cruzada
+// (gastos compartidos del mes seleccionado + gastos grupales vinculados + préstamos de tarjeta vinculados).
+// Se recalcula en vivo cada vez que se tilda/destilda algo como pagado en cualquiera de las 3 partes.
+function renderTotalDeudaPareja() {
+  const el = document.getElementById('comp-total-deuda');
+  if (!el) return;
+  const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
+  const { propYo } = calcProporcionMes(month, year);
+
+  // 1. Gastos compartidos del mes seleccionado (mismo criterio que la tabla de arriba)
+  const gastosRealesBD = (dbCompartido.gastos || []).filter(g => {
+    const d = new Date(g.fecha + 'T12:00:00');
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+  const idsRealesBD = new Set(gastosRealesBD.map(g => g.id));
+  const planIdsRealesBD = new Set(gastosRealesBD.filter(g => g.plan_id).map(g => g.plan_id));
+  const virtualesCompartidos = getGastosConSuscripciones(month, year)
+    .filter(g => g._virtual && g.es_compartido && !idsRealesBD.has(g.id) && (!g.plan_id || !planIdsRealesBD.has(g.plan_id)));
+  const gastosMes = [...gastosRealesBD, ...virtualesCompartidos];
+
+  let balanceCompartido = 0;
+  gastosMes.forEach(g => {
+    const montoARS = toARS(g.monto, g.moneda);
+    const esMio = g.user_id === currentUser.id;
+    const aportePartnerARS = (g.aporte_pareja != null) ? toARS(g.aporte_pareja, g.moneda) : null;
+    const aporteDuenoARS = aportePartnerARS != null ? (montoARS - aportePartnerARS) : montoARS;
+    const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
+    const yoCorresponde = montoARS * propYo;
+    balanceCompartido += (yoCorresponde - yoAporte);
+  });
+
+  // 2. Gastos grupales vinculados a mi cuenta, todavía pendientes
+  const totalGrupalesPend = (dbCompartido.misParticipaciones || [])
+    .filter(p => !p.pagado)
+    .reduce((s, p) => s + Math.max(0, toARS(p.monto_parte, p.moneda) - toARS(p.monto_aportado || 0, p.moneda)), 0);
+
+  // 3. Préstamos de tarjeta vinculados a mi cuenta, todavía pendientes
+  const totalPtPend = (db.prestamosCuotasVinculadas || [])
+    .filter(c => !c.cobrada)
+    .reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
+
+  const totalLeDebo = Math.max(0, balanceCompartido) + totalGrupalesPend + totalPtPend;
+  const totalMeDebe = Math.max(0, -balanceCompartido);
+  const saldado = totalLeDebo < 1;
+
+  el.innerHTML = `<div class="card" style="background:rgba(108,99,255,0.1);border-color:rgba(108,99,255,0.35)">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-weight:700;font-size:15px">💰 Total que le debés a tu pareja</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Gastos compartidos pendientes del mes + gastos grupales y préstamos vinculados a tu cuenta que todavía no están pagados</div>
+      </div>
+      <div style="font-weight:800;font-size:24px;color:${saldado ? 'var(--green)' : 'var(--warn)'}">${saldado ? 'Saldado ✓' : fmtARS(totalLeDebo)}</div>
+    </div>
+    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (de gastos compartidos): <strong style="color:var(--green)">${fmtARS(totalMeDebe)}</strong></div>` : ''}
+  </div>`;
 }
 
 // VAQUITA
@@ -3910,6 +4078,7 @@ function renderGrupales() {
   renderGGParticipantesList();
   renderGrupalesVinculados();
   actualizarVinculoUI();
+  renderTotalDeudaPareja();
 
   const grupales = dbCompartido.grupales;
   const partsAll = dbCompartido.grupalesParticipantes;
@@ -4196,6 +4365,7 @@ function renderPrestamos() {
   initPTSelects();
   actualizarVinculoUI();
   renderPrestamosVinculados();
+  renderTotalDeudaPareja();
   const hoyYM = new Date().toISOString().slice(0, 7);
 
   // KPIs
