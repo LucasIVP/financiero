@@ -596,7 +596,7 @@
       <div class="section-header"><span style="font-weight:600">Gastos marcados como compartidos</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagado</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagué yo</th><th style="text-align:center">Pagó pareja</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
           <tbody id="comp-table-body"></tbody>
         </table>
       </div>
@@ -937,6 +937,16 @@ CREATE POLICY "gastos_update" ON gastos FOR UPDATE
     SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = gastos.user_id)
                                 OR (p.user_b = auth.uid() AND p.user_a = gastos.user_id))));</pre>
       </details>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">💑 SQL: Pago por parte en gastos compartidos (ejecutar una sola vez)</summary>
+        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- Hasta ahora "pagado" era un solo booleano por gasto (todo o nada).
+-- Estas dos columnas permiten que cada persona marque su propia parte como pagada.
+-- Default TRUE para no afectar retroactivamente el historial ya cargado, y para
+-- inicializarlas con el mismo valor que ya tenía "pagado" en cada fila existente.
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado_dueno boolean DEFAULT true;
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado_pareja boolean DEFAULT true;
+UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compartido = true;</pre>
+      </details>
     </div>
   </div>
 </div>
@@ -1054,6 +1064,7 @@ CREATE POLICY "gastos_update" ON gastos FOR UPDATE
         <input type="number" id="eg-aporte-pareja" placeholder="Ej: 20000" min="0">
       </div>
       <div class="form-group" id="eg-pagado-field" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-pagado" style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado</span></label></div>
+      <div class="form-group" id="eg-pagado-compartido-note" style="display:none;grid-column:1/-1;font-size:12px;color:var(--muted);padding:8px 10px;background:var(--surface2);border-radius:8px">💑 Este gasto es compartido — gestioná el pago de cada parte por separado en la sección <strong style="color:var(--text)">Compartido</strong>.</div>
     </div>
     <div id="eg-recurrente-panel" style="display:none;margin:10px 0;padding:14px;background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px">
       <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:10px">🔁 Pago recurrente</div>
@@ -1674,6 +1685,20 @@ function toggleAportePareja(prefix) {
   const cb = document.getElementById(prefix + '-compartido');
   const field = document.getElementById(prefix + '-aporte-pareja-field');
   if (field) field.style.display = cb?.checked ? 'block' : 'none';
+  // En el modal de Editar gasto, si es compartido y no es una cuota de un plan,
+  // el pago se gestiona por parte (checkboxes independientes en Compartido) y no con
+  // el checkbox agregado "Ya pagado" — se oculta para evitar pisar ese estado al guardar.
+  if (prefix === 'eg') {
+    const id = document.getElementById('eg-id')?.value;
+    const g = id ? db.gastos.find(x => x.id === id) : null;
+    const esPlan = !!(g && g.plan_id);
+    const pagadoField = document.getElementById('eg-pagado-field');
+    const nota = document.getElementById('eg-pagado-compartido-note');
+    if (!esPlan) {
+      if (pagadoField) pagadoField.style.display = cb?.checked ? 'none' : '';
+      if (nota) nota.style.display = cb?.checked ? '' : 'none';
+    }
+  }
 }
 
 // Obtener suscripciones (solo para el tab 🔁 Suscripciones)
@@ -1958,7 +1983,7 @@ async function addGasto(){
       const fechaCuota=`${y}-${String(m+1).padStart(2,'0')}-01`;
       const esCompartido=document.getElementById('g-compartido').checked;
       const tarjetaId=document.getElementById('g-tarjeta-id')?.value||null;
-      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null,pagado:esPagado});
+      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado});
     }
     const{error}=await sb.from('gastos').insert(rows);
     setBtnLoading('btn-add-gasto',false);
@@ -1967,7 +1992,7 @@ async function addGasto(){
   } else {
     const esComp=document.getElementById('g-compartido').checked;
     const subcatId = document.getElementById('g-subcat')?.value || null;
-    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado,aporte_pareja:esComp?aportePareja:null};
+    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado,aporte_pareja:esComp?aportePareja:null};
     if(esRecurrente){row.recurrente=true;row.recurrente_activa=true;}
     const{error}=await sb.from('gastos').insert(row);
     setBtnLoading('btn-add-gasto',false);
@@ -2051,6 +2076,37 @@ async function togglePagado(id, checked){
   renderGastos();renderDashboard();
   if(document.getElementById('gastos-gastos-historial')?.classList.contains('active'))renderHistorial();
   if(document.getElementById('page-compartido')?.classList.contains('active'))renderCompartido();
+}
+
+// Pago por parte en gastos compartidos: cada persona (dueño del registro o pareja) tilda
+// su propia parte de forma independiente. El campo agregado "pagado" (usado en Dashboard/
+// Historial para los totales) se mantiene sincronizado: solo queda true cuando AMBAS partes
+// están pagadas, igual que antes se comportaba para gastos no compartidos.
+async function togglePagadoParte(id, quien, checked) {
+  const campo = quien === 'dueno' ? 'pagado_dueno' : 'pagado_pareja';
+  const otroCampo = quien === 'dueno' ? 'pagado_pareja' : 'pagado_dueno';
+  const gasto = db.gastos.find(g => g.id === id);
+  const gastoComp = dbCompartido?.gastos?.find(g => g.id === id);
+  if (!gasto && !gastoComp) return;
+  const ref = gasto || gastoComp;
+  const prevCampo = ref[campo];
+  const prevPagado = ref.pagado;
+  const otroValor = ref[otroCampo] !== false; // undefined/true cuenta como pagado (compatibilidad)
+  const nuevoPagado = checked && otroValor;
+  if (gasto) { gasto[campo] = checked; gasto.pagado = nuevoPagado; }
+  if (gastoComp) { gastoComp[campo] = checked; gastoComp.pagado = nuevoPagado; }
+  const { error } = await sb.from('gastos').update({ [campo]: checked, pagado: nuevoPagado }).eq('id', id);
+  if (error) {
+    if (gasto) { gasto[campo] = prevCampo; gasto.pagado = prevPagado; }
+    if (gastoComp) { gastoComp[campo] = prevCampo; gastoComp.pagado = prevPagado; }
+    showToast(error.message, 'error');
+    renderGastos(); renderHistorial(); renderCompartido();
+    return;
+  }
+  showToast(checked ? 'Marcado como pagado ✓' : 'Marcado como pendiente');
+  renderGastos(); renderDashboard();
+  if (document.getElementById('gastos-gastos-historial')?.classList.contains('active')) renderHistorial();
+  if (document.getElementById('page-compartido')?.classList.contains('active')) renderCompartido();
 }
 function renderGastos(){
   const{month,year}=getSelectedMonthYear('g-month','g-year');
@@ -2650,7 +2706,7 @@ async function saveEditGasto() {
       // 2. Fila nueva con los valores editados, vigente desde aplicarDesde en adelante
       const { error: errNuevo } = await sb.from('gastos').insert({
         user_id: currentUser.id, fecha: aplicarDesdeStr, descripcion: desc, monto, moneda, cat, tipo, medio, notas,
-        tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado, aporte_pareja: egAportePareja,
+        tarjeta_id: tarjetaId, es_compartido: esCompartido, pagado: egPagado, pagado_dueno: egPagado, pagado_pareja: egPagado, aporte_pareja: egAportePareja,
         subcat_id: g.subcat_id || null, recurrente: true, recurrente_activa: recActiva, fecha_fin_recurrencia: fechaFin
       });
       if (errNuevo) { showToast('Error: ' + errNuevo.message, 'error'); setBtnLoading('btn-save-gasto', false); return; }
@@ -3590,19 +3646,29 @@ function renderCompartido() {
       const saldoTxt = Math.abs(saldoYo) < 1 ? '<span style="color:var(--muted)">Saldado</span>'
         : saldoYo > 0 ? `<span style="color:var(--red)">Debés ${fmtARS(saldoYo)}</span>`
         : `<span style="color:var(--green)">Te debe ${fmtARS(-saldoYo)}</span>`;
-      const estaPagado = g.pagado !== false;
+      const miQuien = esMio ? 'dueno' : 'pareja';
+      const suQuien = esMio ? 'pareja' : 'dueno';
+      // Compatibilidad: si todavía no se corrió la migración de pagado_dueno/pagado_pareja,
+      // estas columnas vienen undefined y se tratan como "pagado" (mismo comportamiento que antes).
+      const yoPagadoParte = g[`pagado_${miQuien}`] !== false;
+      const parejaPagadoParte = g[`pagado_${suQuien}`] !== false;
+      const estaPagado = yoPagadoParte && parejaPagadoParte;
       // Todo lo que aparece acá es es_compartido=true, así que cualquiera de los dos puede tildar/destildar
-      // (la política RLS de gastos_update ya lo permite). Excepción: filas virtuales de recurrentes
-      // todavía no tienen fila real en gastos, así que no se pueden togglear hasta el mes en que se generen.
-      const pagadoCellComp = g._virtual
+      // su propia parte (la política RLS de gastos_update ya lo permite). Excepción: filas virtuales de
+      // recurrentes todavía no tienen fila real en gastos, así que no se pueden togglear hasta el mes en que se generen.
+      const chkMi = g._virtual
         ? `<span style="font-size:11px;color:var(--muted)" title="Todavía no se generó la fila real de este mes">—</span>`
-        : `<input type="checkbox" ${estaPagado ? 'checked' : ''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado ? 'Marcar como pendiente' : 'Marcar como pagado'}">`;
+        : `<input type="checkbox" ${yoPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${miQuien}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${yoPagadoParte ? 'Marcar tu parte como pendiente' : 'Marcar tu parte como pagada'}">`;
+      const chkSu = g._virtual
+        ? `<span style="font-size:11px;color:var(--muted)" title="Todavía no se generó la fila real de este mes">—</span>`
+        : `<input type="checkbox" ${parejaPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${suQuien}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent2)" title="${parejaPagadoParte ? 'Marcar la parte de tu pareja como pendiente' : 'Marcar la parte de tu pareja como pagada'}">`;
       return `<tr style="${estaPagado ? '' : 'opacity:0.85'}">
         <td style="color:var(--muted)">${g.fecha}</td>
         <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}${!estaPagado ? ' <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
         <td><span class="tag">${catObj.emoji} ${g.cat || '—'}</span></td>
         <td>${g.moneda === 'USD' ? fmtUSD(g.monto) : fmtARS(g.monto)}</td>
-        <td style="text-align:center">${pagadoCellComp}</td>
+        <td style="text-align:center">${chkMi}</td>
+        <td style="text-align:center">${chkSu}</td>
         <td style="font-size:12px;color:var(--muted)">${esMio ? 'Yo' : 'Pareja'}</td>
         <td style="color:var(--accent)">${fmtARS(montoARS * propYo)}</td>
         <td style="color:var(--accent2)">${fmtARS(montoARS * propOtro)}</td>
