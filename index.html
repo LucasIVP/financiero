@@ -926,6 +926,17 @@ CREATE POLICY "ingresos_delete" ON ingresos FOR DELETE USING (auth.uid() = user_
 -- Default TRUE para no afectar retroactivamente el historial ya cargado.
 ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
       </details>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">💑 SQL: Permitir que la pareja edite gastos compartidos (ejecutar una sola vez)</summary>
+        <pre style="margin-top:10px;padding:12px;background:var(--surface2);border-radius:8px;font-size:11px;color:var(--accent2);overflow-x:auto;white-space:pre-wrap">-- Hasta ahora, gastos_update solo permitía editar (tildar "Pagado", cambiar fecha, etc.)
+-- al dueño del gasto (user_id). Esto bloqueaba a la pareja incluso en gastos es_compartido=true.
+-- Mismo patrón que ya se aplicó a compras_items.
+DROP POLICY IF EXISTS "gastos_update" ON gastos;
+CREATE POLICY "gastos_update" ON gastos FOR UPDATE
+  USING (auth.uid() = user_id OR (es_compartido = true AND EXISTS (
+    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = gastos.user_id)
+                                OR (p.user_b = auth.uid() AND p.user_a = gastos.user_id))));</pre>
+      </details>
     </div>
   </div>
 </div>
@@ -1024,8 +1035,18 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
       <div class="form-group"><label>Categoría</label><select id="eg-cat" onchange="onEgCatChange()"></select></div>
       <div class="form-group" id="eg-subcat-field" style="display:none"><label>Subcategoría</label><select id="eg-subcat"><option value="">— Sin subcategoría —</option></select></div>
       <div class="form-group"><label>Tipo</label><select id="eg-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
-      <div class="form-group"><label>Medio de pago</label><select id="eg-medio" onchange="toggleEditConvertir()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="eg-medio" onchange="toggleEditConvertir();toggleEgAcreditacion()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group"><label>Tarjeta</label><select id="eg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
+      <div class="form-group" id="eg-acreditacion-field" style="display:none;grid-column:1/-1">
+        <div style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px;padding:12px">
+          <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 ¿Cuándo se acredita en la tarjeta?</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:140px"><label>Mes de acreditación</label><select id="eg-acred-mes" onchange="onEgAcredChange()"></select></div>
+            <div class="form-group" style="flex:1;min-width:100px"><label>Año</label><select id="eg-acred-anio" onchange="onEgAcredChange()"></select></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">Cambia la fecha del gasto (arriba) manteniendo el día, para no tener que calcular el mes a mano.</div>
+        </div>
+      </div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eg-notas" placeholder="Opcional"></div>
       <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="eg-compartido" style="width:16px;height:16px;accent-color:var(--accent2)" onchange="toggleAportePareja('eg')"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
       <div class="form-group" id="eg-aporte-pareja-field" style="display:none;grid-column:1/-1">
@@ -2465,7 +2486,58 @@ function abrirEditGasto(id, mesCtx) {
   // Show recurrente panel if gasto is recurrente
   refreshEgRecurrentePanel(g);
   toggleEditConvertir();
+  // Selector de mes de acreditación (solo para gastos de crédito sueltos, no cuotas de un plan:
+  // en un plan, la fecha se maneja cuota por cuota y este selector no tendría efecto al guardar)
+  const egAcredField = document.getElementById('eg-acreditacion-field');
+  if (g.plan_id) {
+    if (egAcredField) egAcredField.style.display = 'none';
+  } else {
+    toggleEgAcreditacion();
+  }
   openModal('modal-edit-gasto');
+}
+
+// Muestra/oculta el selector de mes de acreditación según el medio de pago,
+// y lo inicializa con el mes/año que ya tiene la fecha actual del gasto.
+function toggleEgAcreditacion() {
+  const medio = document.getElementById('eg-medio')?.value;
+  const field = document.getElementById('eg-acreditacion-field');
+  if (!field) return;
+  if (medio === 'credito') {
+    field.style.display = '';
+    fillEgAcredMes();
+  } else {
+    field.style.display = 'none';
+  }
+}
+
+function fillEgAcredMes() {
+  const mesEl = document.getElementById('eg-acred-mes');
+  const anioEl = document.getElementById('eg-acred-anio');
+  if (!mesEl || !anioEl) return;
+  const fechaActual = document.getElementById('eg-fecha')?.value;
+  const d = fechaActual ? new Date(fechaActual + 'T12:00:00') : new Date();
+  const mesSel = d.getMonth();
+  const anioSel = d.getFullYear();
+  mesEl.innerHTML = MONTHS.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+  mesEl.value = mesSel;
+  const years = [];
+  for (let y = anioSel - 1; y <= anioSel + 2; y++) years.push(y);
+  anioEl.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  anioEl.value = anioSel;
+}
+
+// Al cambiar mes/año de acreditación, recalcula eg-fecha manteniendo el día original
+// (el "día de compra") y solo actualizando el mes/año en que se acredita en la tarjeta.
+function onEgAcredChange() {
+  const mesEl = document.getElementById('eg-acred-mes');
+  const anioEl = document.getElementById('eg-acred-anio');
+  const fechaEl = document.getElementById('eg-fecha');
+  if (!mesEl || !anioEl || !fechaEl) return;
+  const mes = parseInt(mesEl.value);
+  const anio = parseInt(anioEl.value);
+  const diaActual = (fechaEl.value || new Date().toISOString().slice(0, 10)).split('-')[2] || '01';
+  fechaEl.value = `${anio}-${String(mes + 1).padStart(2, '0')}-${diaActual}`;
 }
 
 async function saveEditGasto() {
