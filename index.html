@@ -2,8 +2,16 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Finanzas Personales</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1117">
+<link rel="icon" href="icon-192.png">
+<!-- Soporte "Agregar a inicio" en iOS Safari (no lee manifest.json) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finanzas">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -933,9 +941,9 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS pagado boolean DEFAULT true;</pre>
 -- Mismo patrón que ya se aplicó a compras_items.
 DROP POLICY IF EXISTS "gastos_update" ON gastos;
 CREATE POLICY "gastos_update" ON gastos FOR UPDATE
-  USING (auth.uid() = user_id OR (es_compartido = true AND EXISTS (
-    SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = gastos.user_id)
-                                OR (p.user_b = auth.uid() AND p.user_a = gastos.user_id))));</pre>
+USING (auth.uid() = user_id OR (es_compartido = true AND EXISTS (
+SELECT 1 FROM parejas p WHERE (p.user_a = auth.uid() AND p.user_b = gastos.user_id)
+OR (p.user_b = auth.uid() AND p.user_a = gastos.user_id))));</pre>
       </details>
       <details style="margin-top:10px">
         <summary style="cursor:pointer;color:var(--muted);font-size:13px">💑 SQL: Pago por parte en gastos compartidos (ejecutar una sola vez)</summary>
@@ -5967,6 +5975,15 @@ function renderComprasTemas() {
 
 
 init();
+</script>
+<script>
+// Registro del service worker (ver service-worker.js) — habilita instalar la app en el
+// celu y que abra rápido/offline-ish. No afecta los datos: Supabase sigue siempre en vivo.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
