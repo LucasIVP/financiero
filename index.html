@@ -21,7 +21,17 @@
     --text:#e8eaf0;--muted:#7b7f9e;--green:#00d4aa;--red:#ff4d6d;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+  html{overscroll-behavior-y:none;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;}
+  /* Sensación de app nativa (PWA en iOS/Android): sin flash gris al tocar, sin menú de
+     "copiar/compartir" en toques largos sobre botones, sin el delay de 300ms en taps. */
+  button,.nav-btn,.inner-tab,.btn,.tag,select{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;touch-action:manipulation;}
+  .nav-btn,.inner-tab,.btn{-webkit-user-select:none;user-select:none;}
+  /* iOS hace zoom automático al enfocar un input/select si su fuente es menor a 16px.
+     Se fuerza en mobile para que no "salte" la pantalla cada vez que se toca un campo. */
+  @media(max-width:900px){
+    input,select,textarea{font-size:16px !important;}
+  }
 
   #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200;}
   .auth-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px;width:min(400px,95vw);}
@@ -38,13 +48,13 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   .loading-text{color:var(--muted);font-size:14px;}
 
-  #toast-container{position:fixed;bottom:24px;right:24px;z-index:400;display:flex;flex-direction:column;gap:8px;}
+  #toast-container{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));right:calc(24px + env(safe-area-inset-right));z-index:400;display:flex;flex-direction:column;gap:8px;}
   .toast{padding:12px 18px;border-radius:10px;font-size:14px;font-weight:500;animation:slideIn 0.2s ease;max-width:300px;}
   .toast-success{background:#00d4aa;color:#0a1a16;}
   .toast-error{background:#ff4d6d;color:#fff;}
   @keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
 
-  .nav{display:flex;align-items:center;gap:8px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;}
+  .nav{display:flex;align-items:center;gap:8px;padding:calc(12px + env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) 12px max(24px,env(safe-area-inset-left));background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .nav-title{font-weight:700;font-size:16px;color:var(--accent);margin-right:16px;white-space:nowrap;}
   .nav-btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;white-space:nowrap;transition:all 0.15s;}
   .nav-btn:hover{border-color:var(--accent);color:var(--text);}
@@ -54,7 +64,7 @@
   .nav-logout{padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12px;white-space:nowrap;}
   .nav-logout:hover{border-color:var(--red);color:var(--red);}
 
-  .page{display:none;padding:24px;max-width:1200px;margin:0 auto;}
+  .page{display:none;padding:24px max(24px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));max-width:1200px;margin:0 auto;}
   .page.active{display:block;}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;}
   .card-title{font-size:13px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
@@ -78,7 +88,7 @@
   .btn-danger{background:var(--danger);color:#fff;}
   .btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
   .btn-success{background:var(--green);color:#111;}
-  .table-wrap{overflow-x:auto;}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   table{width:100%;border-collapse:collapse;font-size:14px;}
   th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:600;font-size:12px;border-bottom:1px solid var(--border);text-transform:uppercase;}
   td{padding:10px 12px;border-bottom:1px solid var(--border);}
@@ -112,7 +122,7 @@
   .dolar-badge{background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);color:#a89cff;border-radius:6px;padding:4px 10px;font-size:13px;font-weight:600;}
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;}
   .modal-overlay.open{display:flex;}
-  .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(480px,95vw);max-height:90vh;overflow-y:auto;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(480px,95vw);max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
   .modal-title{font-size:16px;font-weight:700;}
   .modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
