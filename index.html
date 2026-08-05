@@ -3988,6 +3988,32 @@ function abrirEditGrupal(grupalId) {
   openModal('modal-edit-grupal');
 }
 
+// Cuando cambia el monto_parte de un participante que ya tiene cuotas generadas
+// (por editar el total del gasto, agregar o quitar participantes), reajusta el
+// cronograma para que vuelva a sumar el nuevo monto_parte. Las cuotas ya pagadas
+// NO se tocan (lo que ya se cobró/pagó quedó así históricamente); el ajuste se
+// reparte solo entre las cuotas todavía pendientes.
+async function recalcularCuotasParticipante(participanteId, nuevoMontoParte) {
+  const cuotas = dbCompartido.grupalesParticipantesCuotas
+    .filter(c => c.participante_id === participanteId)
+    .sort((a, b) => a.cuota_num - b.cuota_num);
+  if (!cuotas.length) return;
+
+  const pagadas = cuotas.filter(c => c.pagado);
+  const pendientes = cuotas.filter(c => !c.pagado);
+  const totalPagado = pagadas.reduce((s, c) => s + (c.monto || 0), 0);
+
+  if (pendientes.length === 0) return; // ya está todo pagado, no queda nada que redistribuir
+
+  const restante = Math.max(0, nuevoMontoParte - totalPagado);
+  const nuevoCuotaMonto = Math.round(restante / pendientes.length * 100) / 100;
+
+  await Promise.all(pendientes.map(c =>
+    sb.from('gastos_grupales_participantes_cuotas').update({ monto: nuevoCuotaMonto }).eq('id', c.id)
+  ));
+  pendientes.forEach(c => c.monto = nuevoCuotaMonto);
+}
+
 async function guardarDatosGrupal() {
   const grupalId = document.getElementById('eg-grupal-id').value;
   const descripcion = document.getElementById('eg-descripcion').value.trim();
@@ -4006,6 +4032,9 @@ async function guardarDatosGrupal() {
     .update({ monto_parte: parteMonto, moneda })
     .eq('gasto_grupal_id', grupalId);
   if (res2.error) { showToast('Error al actualizar participantes: ' + res2.error.message, 'error'); return; }
+
+  // 2b. Si alguno ya tiene cuotas generadas, reajustar su cronograma pendiente al nuevo monto_parte
+  await Promise.all(parts.map(p => recalcularCuotasParticipante(p.id, parteMonto)));
 
   // 3. Recargar datos frescos y re-renderizar
   await loadCompartido();
@@ -4112,6 +4141,8 @@ async function agregarParticipanteEdit() {
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
   ));
   partsActuales.forEach(p => p.monto_parte = parteMonto);
+  // Si alguno de los participantes existentes ya tenía cuotas generadas, reajustar su cronograma pendiente
+  await Promise.all(partsActuales.map(p => recalcularCuotasParticipante(p.id, parteMonto)));
 
   // Insert new participant
   const { data: newP, error } = await sb.from('gastos_grupales_participantes')
@@ -4251,6 +4282,8 @@ async function quitarParticipanteEdit(partId, grupalId) {
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
   ));
   partsActuales.forEach(p => p.monto_parte = parteMonto);
+  // Si alguno de los que quedan ya tenía cuotas generadas, reajustar su cronograma pendiente
+  await Promise.all(partsActuales.map(p => recalcularCuotasParticipante(p.id, parteMonto)));
 
   renderEditGrupalLista(grupalId);
   renderGrupales();
