@@ -4234,6 +4234,7 @@ function renderGrupales() {
   // Set today's date in form if empty
   const fechaEl = document.getElementById('gg-fecha');
   if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
+  toggleGGCuotas(); // asegura que el bloque de cuotas se muestre si "Crédito" ya está seleccionado (ej. al entrar a la pestaña, sin disparar el onchange)
   renderGGParticipantesList();
   renderGrupalesVinculados();
   actualizarVinculoUI();
