@@ -613,7 +613,7 @@
     <div class="card">
       <div class="section-header"><span style="font-weight:600">Gastos marcados como compartidos</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Tildá la columna ☑ para ir sumando algunos ítems puntuales (ej. para saber cuánto pedirle que te transfiera ahora, dejando el resto para después) — no marca nada como pagado.</div>
-      <div id="comp-seleccion-total" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--surface2);border:1px solid rgba(108,99,255,0.5);box-shadow:0 4px 12px rgba(0,0,0,0.35);border-radius:8px;padding:10px 14px;margin-bottom:10px;position:sticky;top:8px;z-index:5"></div>
+      <div id="comp-seleccion-total" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--surface2);border:1px solid rgba(108,99,255,0.5);box-shadow:0 4px 12px rgba(0,0,0,0.35);border-radius:8px;padding:10px 14px;margin-bottom:10px;position:-webkit-sticky;position:sticky;top:8px;z-index:5"></div>
       <div class="table-wrap">
         <table>
           <thead><tr><th></th><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagué yo</th><th style="text-align:center">Pagó pareja</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
@@ -3904,13 +3904,23 @@ function renderTotalDeudaPareja() {
   // 2b. Gastos grupales que YO creé y ella todavía no pagó, de ESTE mes — dirección inversa, lo que ELLA me debe.
   const totalGrupalesMeDebe = getGrupalesCreadosPendMes(month, year).reduce((s, f) => s + f.saldoYo, 0);
 
-  // 3. Préstamos de tarjeta vinculados a mi cuenta, todavía pendientes
+  // 3. Préstamos de tarjeta vinculados a mi cuenta, todavía pendientes — esto es lo que YO debo.
   const totalPtPend = (db.prestamosCuotasVinculadas || [])
     .filter(c => !c.cobrada)
     .reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
 
+  // 3b. Préstamos de tarjeta que YO creé (compras que le adelanté a mi pareja) y todavía tienen cuotas
+  // pendientes — dirección inversa de totalPtPend, lo que ELLA me debe. Antes faltaba esta fuente acá
+  // (solo se mostraba en Tarjetas → Préstamos), por eso "Ella me debe" no coincidía con la suma manual
+  // de préstamo tarjeta + gastos grupales + gastos compartidos.
+  const otherUserId = miParejaActual()?.partnerId || null;
+  const misPrestamosVincIds = new Set((db.prestamos || []).filter(p => p.persona_user_id === otherUserId).map(p => p.id));
+  const totalPtMeDebe = (db.prestamosCuotas || [])
+    .filter(c => !c.cobrada && misPrestamosVincIds.has(c.prestamo_id))
+    .reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
+
   const totalLeDebo = Math.max(0, balanceCompartido) + totalGrupalesPend + totalPtPend;
-  const totalMeDebe = Math.max(0, -balanceCompartido) + totalGrupalesMeDebe;
+  const totalMeDebe = Math.max(0, -balanceCompartido) + totalGrupalesMeDebe + totalPtMeDebe;
   const saldado = totalLeDebo < 1;
 
   el.innerHTML = `<div class="card" style="background:rgba(108,99,255,0.1);border-color:rgba(108,99,255,0.35)">
@@ -3921,7 +3931,7 @@ function renderTotalDeudaPareja() {
       </div>
       <div style="font-weight:800;font-size:24px;color:${saldado ? 'var(--green)' : 'var(--warn)'}">${saldado ? 'Saldado ✓' : fmtARS(totalLeDebo)}</div>
     </div>
-    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (gastos compartidos + gastos grupales pendientes de este mes): <strong style="color:var(--green)">${fmtARS(totalMeDebe)}</strong></div>` : ''}
+    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (gastos compartidos + gastos grupales pendientes de este mes + préstamos de tarjeta que le adelantaste): <strong style="color:var(--green)">${fmtARS(totalMeDebe)}</strong></div>` : ''}
   </div>`;
 }
 
