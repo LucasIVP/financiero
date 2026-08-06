@@ -613,7 +613,7 @@
     <div class="card">
       <div class="section-header"><span style="font-weight:600">Gastos marcados como compartidos</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Tildá la columna ☑ para ir sumando algunos ítems puntuales (ej. para saber cuánto pedirle que te transfiera ahora, dejando el resto para después) — no marca nada como pagado.</div>
-      <div id="comp-seleccion-total" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.35);border-radius:8px;padding:10px 14px;margin-bottom:10px"></div>
+      <div id="comp-seleccion-total" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--surface2);border:1px solid rgba(108,99,255,0.5);box-shadow:0 4px 12px rgba(0,0,0,0.35);border-radius:8px;padding:10px 14px;margin-bottom:10px;position:sticky;top:8px;z-index:5"></div>
       <div class="table-wrap">
         <table>
           <thead><tr><th></th><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagué yo</th><th style="text-align:center">Pagó pareja</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
@@ -3649,6 +3649,41 @@ function getGrupalesVincMes(month, year) {
   return out;
 }
 
+// Gastos grupales que YO creé y tienen un participante vinculado a una cuenta real (mi pareja) que
+// todavía no pagó su parte de ESTE mes — lo que ELLA me debe por esos gastos grupales (dirección inversa
+// de getGrupalesVincMes). Mismo criterio de scope mensual: si paga en cuotas, solo la cuota de este mes.
+function getGrupalesCreadosPendMes(month, year) {
+  const out = [];
+  (dbCompartido.grupalesParticipantes || []).forEach(p => {
+    if (p.es_yo || !p.persona_user_id || p.pagado) return;
+    const gg = (dbCompartido.grupales || []).find(x => x.id === p.gasto_grupal_id);
+    const cuotasP = (dbCompartido.grupalesParticipantesCuotas || []).filter(c => c.participante_id === p.id);
+    if (cuotasP.length > 0) {
+      cuotasP.filter(c => !c.pagado).forEach(c => {
+        const d = new Date(c.fecha + 'T12:00:00');
+        if (d.getMonth() !== month || d.getFullYear() !== year) return;
+        out.push({
+          id: c.id, fecha: c.fecha,
+          descripcion: `${gg?.descripcion || '(gasto grupal)'} — cuota ${String(c.cuota_num).padStart(2,'0')}/${String(c.cuota_total).padStart(2,'0')}`,
+          categoria: gg?.categoria || '', moneda: c.moneda, montoParte: c.monto,
+          saldoNativo: c.monto, saldoYo: toARS(c.monto, c.moneda)
+        });
+      });
+    } else {
+      const d = gg?.fecha ? new Date(gg.fecha + 'T12:00:00') : null;
+      if (!d || d.getMonth() !== month || d.getFullYear() !== year) return;
+      const saldoNativo = Math.max(0, (p.monto_parte || 0) - (p.monto_aportado || 0));
+      if (saldoNativo <= 0) return;
+      out.push({
+        id: p.id, fecha: gg?.fecha || '', descripcion: gg?.descripcion || '(gasto grupal)',
+        categoria: gg?.categoria || '', moneda: p.moneda, montoParte: p.monto_parte || 0,
+        saldoNativo, saldoYo: toARS(saldoNativo, p.moneda)
+      });
+    }
+  });
+  return out;
+}
+
 function renderCompartido() {
   const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
   document.getElementById('compartido-subtitle').textContent = `${MONTHS[month]} ${year}`;
@@ -3714,11 +3749,17 @@ function renderCompartido() {
   // definido por el split del gasto grupal. Si es en cuotas, cada mes solo muestra SU cuota, no el total
   // restante (para no mezclar meses siguientes en "cuánto tengo que transferir este mes").
   const filasGrupalesVinc = getGrupalesVincMes(month, year);
-  compGastosConSaldo = [...gastosConSaldo, ...filasGrupalesVinc.map(f => ({ g: { id: f.id }, saldoYo: f.saldoYo }))];
+  // Gastos grupales que YO creé y ella me debe (dirección inversa) — de ESTE mes, mismo criterio.
+  const filasGrupalesMeDeben = getGrupalesCreadosPendMes(month, year);
+  compGastosConSaldo = [
+    ...gastosConSaldo,
+    ...filasGrupalesVinc.map(f => ({ g: { id: f.id }, saldoYo: f.saldoYo })),
+    ...filasGrupalesMeDeben.map(f => ({ g: { id: f.id }, saldoYo: -f.saldoYo }))
+  ];
 
   const tbody = document.getElementById('comp-table-body');
   const empty = document.getElementById('comp-empty');
-  if (gastosMes.length === 0 && filasGrupalesVinc.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; }
+  if (gastosMes.length === 0 && filasGrupalesVinc.length === 0 && filasGrupalesMeDeben.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; }
   else {
     empty.style.display = 'none';
     const filasGrupalesHTML = filasGrupalesVinc.map(f => {
@@ -3735,6 +3776,22 @@ function renderCompartido() {
         <td style="color:var(--accent)">${fmtMon(f.saldoNativo)}</td>
         <td>—</td>
         <td style="font-size:12px;font-weight:600"><span style="color:var(--red)">Debés ${fmtMon(f.saldoNativo)}</span></td>
+      </tr>`;
+    }).join('');
+    const filasGrupalesMeDebenHTML = filasGrupalesMeDeben.map(f => {
+      const fmtMon = v => f.moneda === 'USD' ? fmtUSD(v) : fmtARS(v);
+      return `<tr>
+        <td style="text-align:center"><input type="checkbox" ${compSeleccionados.has(f.id) ? 'checked' : ''} onchange="toggleCompSeleccion('${f.id}', this.checked)" style="width:15px;height:15px;accent-color:var(--accent2)" title="Sumar este ítem al total seleccionado"></td>
+        <td style="color:var(--muted)">${f.fecha}</td>
+        <td><div style="font-weight:500">${f.descripcion} <span style="font-size:11px;color:var(--accent2)" title="Gasto grupal que creaste vos, se marca como pagado desde 🤝 Gastos grupales">🤝 Grupal</span></div></td>
+        <td><span class="tag">${f.categoria || '—'}</span></td>
+        <td>${fmtMon(f.montoParte)}</td>
+        <td style="text-align:center"><span style="font-size:11px;color:var(--muted)" title="Se marca como pagado desde 🤝 Gastos grupales">—</span></td>
+        <td style="text-align:center"><span style="font-size:11px;color:var(--muted)" title="Se marca como pagado desde 🤝 Gastos grupales">—</span></td>
+        <td style="font-size:12px;color:var(--muted)">—</td>
+        <td>—</td>
+        <td style="color:var(--accent2)">${fmtMon(f.saldoNativo)}</td>
+        <td style="font-size:12px;font-weight:600"><span style="color:var(--green)">Te debe ${fmtMon(f.saldoNativo)}</span></td>
       </tr>`;
     }).join('');
     tbody.innerHTML = gastosConSaldo.map(({ g, montoARS, esMio, saldoYo, tieneAporteCustom }) => {
@@ -3771,7 +3828,7 @@ function renderCompartido() {
         <td style="color:var(--accent2)">${fmtARS(montoARS * propOtro)}</td>
         <td style="font-size:12px;font-weight:600">${saldoTxt}</td>
       </tr>`;
-    }).join('') + filasGrupalesHTML;
+    }).join('') + filasGrupalesHTML + filasGrupalesMeDebenHTML;
   }
   renderCompSeleccionTotal();
 
@@ -3841,8 +3898,11 @@ function renderTotalDeudaPareja() {
   });
 
   // 2. Gastos grupales vinculados a mi cuenta, pendientes de ESTE mes (mismo criterio que la tabla de arriba:
-  // si es en cuotas, solo la cuota de este mes; no se mezclan meses siguientes)
+  // si es en cuotas, solo la cuota de este mes; no se mezclan meses siguientes) — esto es lo que YO debo.
   const totalGrupalesPend = getGrupalesVincMes(month, year).reduce((s, f) => s + f.saldoYo, 0);
+
+  // 2b. Gastos grupales que YO creé y ella todavía no pagó, de ESTE mes — dirección inversa, lo que ELLA me debe.
+  const totalGrupalesMeDebe = getGrupalesCreadosPendMes(month, year).reduce((s, f) => s + f.saldoYo, 0);
 
   // 3. Préstamos de tarjeta vinculados a mi cuenta, todavía pendientes
   const totalPtPend = (db.prestamosCuotasVinculadas || [])
@@ -3850,7 +3910,7 @@ function renderTotalDeudaPareja() {
     .reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
 
   const totalLeDebo = Math.max(0, balanceCompartido) + totalGrupalesPend + totalPtPend;
-  const totalMeDebe = Math.max(0, -balanceCompartido);
+  const totalMeDebe = Math.max(0, -balanceCompartido) + totalGrupalesMeDebe;
   const saldado = totalLeDebo < 1;
 
   el.innerHTML = `<div class="card" style="background:rgba(108,99,255,0.1);border-color:rgba(108,99,255,0.35)">
@@ -3861,7 +3921,7 @@ function renderTotalDeudaPareja() {
       </div>
       <div style="font-weight:800;font-size:24px;color:${saldado ? 'var(--green)' : 'var(--warn)'}">${saldado ? 'Saldado ✓' : fmtARS(totalLeDebo)}</div>
     </div>
-    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (de gastos compartidos): <strong style="color:var(--green)">${fmtARS(totalMeDebe)}</strong></div>` : ''}
+    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (gastos compartidos + gastos grupales pendientes de este mes): <strong style="color:var(--green)">${fmtARS(totalMeDebe)}</strong></div>` : ''}
   </div>`;
 }
 
