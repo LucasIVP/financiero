@@ -3866,9 +3866,12 @@ function renderCompSeleccionTotal() {
     <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="limpiarCompSeleccion()">Limpiar selección</button>`;
 }
 
-// Total consolidado: cuánto le debo a mi pareja en total, sumando las 3 fuentes de deuda cruzada
-// (gastos compartidos del mes seleccionado + gastos grupales vinculados + préstamos de tarjeta vinculados).
-// Se recalcula en vivo cada vez que se tilda/destilda algo como pagado en cualquiera de las 3 partes.
+// Total consolidado del mes: suma de las 3 fuentes de deuda cruzada (gastos compartidos + gastos grupales
+// vinculados + préstamos de tarjeta vinculados) para el mes seleccionado.
+// - "Total que le debés a tu pareja" (totalLeDebo): SÍ baja al marcar algo como pagado/cobrado, porque
+//   representa lo que todavía falta transferir.
+// - "Tu pareja te debe a vos" (totalMeDebe): NUNCA baja al marcar algo como pagado/cobrado de tu lado;
+//   siempre muestra el total generado ese mes en gastos grupales y préstamos que ella te debe.
 function renderTotalDeudaPareja() {
   const el = document.getElementById('comp-total-deuda');
   if (!el) return;
@@ -3899,13 +3902,29 @@ function renderTotalDeudaPareja() {
 
   // 2. Gastos grupales vinculados a mi cuenta, pendientes de ESTE mes (mismo criterio que la tabla de arriba:
   // si es en cuotas, solo la cuota de este mes; no se mezclan meses siguientes) — esto es lo que YO debo.
+  // Esta parte SÍ baja al marcar como pagado (es "lo que todavía tengo que transferir").
   const totalGrupalesPend = getGrupalesVincMes(month, year).reduce((s, f) => s + f.saldoYo, 0);
 
-  // 2b. Gastos grupales que YO creé y ella todavía no pagó, de ESTE mes — dirección inversa, lo que ELLA me debe.
-  const totalGrupalesMeDebe = getGrupalesCreadosPendMes(month, year).reduce((s, f) => s + f.saldoYo, 0);
+  // 2b. Gastos grupales que YO creé y le corresponden a mi pareja, del mes seleccionado — monto BRUTO,
+  // sin filtrar por pagado: esta línea ("tu pareja te debe a vos") nunca tiene que bajar al tildar algo.
+  let totalGrupalesMeDebe = 0;
+  (dbCompartido.grupalesParticipantes || []).forEach(p => {
+    if (p.es_yo || !p.persona_user_id) return;
+    const gg = (dbCompartido.grupales || []).find(x => x.id === p.gasto_grupal_id);
+    const cuotasP = (dbCompartido.grupalesParticipantesCuotas || []).filter(c => c.participante_id === p.id);
+    if (cuotasP.length > 0) {
+      cuotasP.forEach(c => {
+        const d = new Date(c.fecha + 'T12:00:00');
+        if (d.getMonth() === month && d.getFullYear() === year) totalGrupalesMeDebe += toARS(c.monto, c.moneda);
+      });
+    } else {
+      const d = gg?.fecha ? new Date(gg.fecha + 'T12:00:00') : null;
+      if (d && d.getMonth() === month && d.getFullYear() === year) totalGrupalesMeDebe += toARS(p.monto_parte || 0, p.moneda);
+    }
+  });
 
-  // 3. Préstamos de tarjeta vinculados a mi cuenta: solo la cuota que cae en ESTE mes (mismo criterio de
-  // scope mensual que gastos compartidos y gastos grupales — no el saldo total restante) — esto es lo que YO debo.
+  // 3. Préstamos de tarjeta vinculados a mi cuenta: solo la cuota que cae en ESTE mes, filtrando "cobrada"
+  // — esto es lo que YO debo, y SÍ baja al marcar como cobrada (es "lo que todavía tengo que transferir").
   const totalPtPend = (db.prestamosCuotasVinculadas || [])
     .filter(c => {
       if (c.cobrada) return false;
@@ -3914,16 +3933,14 @@ function renderTotalDeudaPareja() {
     })
     .reduce((s, c) => s + toARS(c.monto, c.moneda), 0);
 
-  // 3b. Préstamos de tarjeta que YO creé (compras que le adelanté a mi pareja): solo la cuota de ESTE mes —
-  // dirección inversa de totalPtPend, lo que ELLA me debe. Antes faltaba esta fuente acá (solo se mostraba
-  // en Tarjetas → Préstamos), por eso "Ella me debe" no coincidía con la suma manual de préstamo tarjeta +
-  // gastos grupales + gastos compartidos. Ojo: tiene que sumar por mes igual que las otras dos fuentes, no
-  // el saldo pendiente total de todas las cuotas futuras.
+  // 3b. Préstamos de tarjeta que YO creé (compras que le adelanté a mi pareja): cuota de ESTE mes, sin
+  // filtrar por "cobrada" — dirección inversa de totalPtPend. Esta línea ("tu pareja te debe a vos")
+  // nunca tiene que bajar al tildar "Cobrado".
   const otherUserId = miParejaActual()?.partnerId || null;
   const misPrestamosVincIds = new Set((db.prestamos || []).filter(p => p.persona_user_id === otherUserId).map(p => p.id));
   const totalPtMeDebe = (db.prestamosCuotas || [])
     .filter(c => {
-      if (c.cobrada || !misPrestamosVincIds.has(c.prestamo_id)) return false;
+      if (!misPrestamosVincIds.has(c.prestamo_id)) return false;
       const d = new Date(c.fecha + 'T12:00:00');
       return d.getMonth() === month && d.getFullYear() === year;
     })
