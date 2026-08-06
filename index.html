@@ -612,9 +612,11 @@
   <div id="compartido-gastos-comp" class="inner-section active">
     <div class="card">
       <div class="section-header"><span style="font-weight:600">Gastos marcados como compartidos</span><span id="comp-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Tildá la columna ☑ para ir sumando algunos ítems puntuales (ej. para saber cuánto pedirle que te transfiera ahora, dejando el resto para después) — no marca nada como pagado.</div>
+      <div id="comp-seleccion-total" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.35);border-radius:8px;padding:10px 14px;margin-bottom:10px"></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagué yo</th><th style="text-align:center">Pagó pareja</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
+          <thead><tr><th></th><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="text-align:center">Pagué yo</th><th style="text-align:center">Pagó pareja</th><th>Quién pagó</th><th>Tu parte</th><th>Parte pareja</th><th>Saldo</th></tr></thead>
           <tbody id="comp-table-body"></tbody>
         </table>
       </div>
@@ -665,7 +667,7 @@
         <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="gg-notas" placeholder="Opcional"></div>
         <div class="form-group" id="gg-cuotas-fields" style="display:none;grid-column:1/-1">
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-            <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas (tu parte · también aplica a los participantes que marques "también en cuotas")</div>
+            <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:10px">💳 Detalle de cuotas (tu parte)</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
               <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="gg-ncuotas" placeholder="12" min="1" max="60" value="1" oninput="updateGGPreview()"></div>
               <div class="form-group"><label>Mes primera cuota</label><select id="gg-cuota-mes"></select></div>
@@ -686,14 +688,16 @@
             <option value="le_debo">Le debo</option>
           </select>
           <input type="number" id="gg-nuevo-aporte" placeholder="Ya puso (opcional)" min="0" title="Cuánto puso esta persona al momento de pagar, si ya puso algo" style="width:140px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
-          <label id="gg-nuevo-cuotas-wrap" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap">
-            <input type="checkbox" id="gg-nuevo-cuotas" title="Esta persona te va a devolver su parte en cuotas, con el mismo cronograma (cantidad y meses) que tu parte"> 💳 También en cuotas
-          </label>
           <button class="btn btn-ghost" onclick="addGGParticipante()" style="white-space:nowrap">+ Agregar</button>
         </div>
         <div id="gg-vincular-wrap" style="display:none;margin-top:8px">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
             <input type="checkbox" id="gg-nueva-vincular"> <span id="gg-vincular-label">Vincular a tu pareja (le va a aparecer en su propio dashboard)</span>
+          </label>
+        </div>
+        <div id="gg-cuotas-participante-wrap" style="display:none;margin-top:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="gg-nueva-cuotas"> <span>Paga en cuotas, igual que vos (mismos meses y cantidad)</span>
           </label>
         </div>
         <div id="gg-preview" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>
@@ -1339,7 +1343,7 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
     <div style="font-weight:600;font-size:13px;margin-bottom:10px">Participantes actuales</div>
     <div id="eg-grupal-lista" style="margin-bottom:16px"></div>
     <div style="font-weight:600;font-size:13px;margin-bottom:10px">Agregar participante</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       <input type="text" id="eg-nueva-persona" placeholder="Nombre" style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
       <select id="eg-nuevo-rol" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
         <option value="me_debe">Me debe</option>
@@ -1347,18 +1351,6 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
       </select>
       <input type="number" id="eg-nuevo-aporte" placeholder="Ya puso (opcional)" min="0" style="width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
       <button class="btn btn-ghost" onclick="agregarParticipanteEdit()">+ Agregar</button>
-    </div>
-    <div id="eg-nuevo-cuotas-wrap" style="display:none;margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
-        <input type="checkbox" id="eg-nuevo-cuotas" onchange="toggleEgNuevoCuotasFields()" title="Esta persona te va a devolver su parte en cuotas"> 💳 También en cuotas
-      </label>
-      <div id="eg-nuevo-cuotas-fields" style="display:none;margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-          <div class="form-group"><label>Cantidad de cuotas</label><input type="number" id="eg-nuevo-ncuotas" min="1" max="60" value="1"></div>
-          <div class="form-group"><label>Mes primera cuota</label><select id="eg-nuevo-cuota-mes"></select></div>
-          <div class="form-group"><label>Año primera cuota</label><select id="eg-nuevo-cuota-anio"></select></div>
-        </div>
-      </div>
     </div>
     <div id="eg-vincular-wrap" style="display:none;margin:-10px 0 16px">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
@@ -3541,7 +3533,7 @@ async function init(){
 // Lee ingresos de tabla ingresos (ambos usuarios)
 // ============================================================
 
-let dbCompartido = { gastos: [], ingresos: [], vaquita: [], grupales: [], grupalesParticipantes: [], misParticipaciones: [], grupalesVinculados: [], grupalesParticipantesCuotas: [], grupalesParticipantesCuotasVinculadas: [] };
+let dbCompartido = { gastos: [], ingresos: [], vaquita: [], grupales: [], grupalesParticipantes: [], grupalesParticipantesCuotas: [], misParticipaciones: [], grupalesVinculados: [] };
 
 async function loadCompartido() {
   // Gastos marcados como compartidos (todos los usuarios)
@@ -3553,8 +3545,8 @@ async function loadCompartido() {
   // Gastos grupales (los que yo creé)
   const { data: grupales } = await sb.from('gastos_grupales').select('*').eq('user_id', currentUser.id).order('fecha', { ascending: false });
   const { data: grupalesPart } = await sb.from('gastos_grupales_participantes').select('*').eq('user_id', currentUser.id);
-  // Cuotas de participantes (cuando devuelven su parte en cuotas, mismo cronograma que la mía)
-  const { data: ggpCuotas } = await sb.from('gastos_grupales_participantes_cuotas').select('*').eq('user_id', currentUser.id);
+  // Cronograma de cuotas de participantes que también pagan en cuotas
+  const { data: grupalesPartCuotas } = await sb.from('gastos_grupales_participantes_cuotas').select('*').eq('user_id', currentUser.id);
   // Participaciones donde YO soy la persona vinculada (gastos grupales de mi pareja que me corresponden a mí)
   const { data: misParticipaciones } = await sb.from('gastos_grupales_participantes').select('*').eq('persona_user_id', currentUser.id);
   const idsVinculados = [...new Set((misParticipaciones || []).map(p => p.gasto_grupal_id))];
@@ -3563,21 +3555,14 @@ async function loadCompartido() {
     const { data: gv } = await sb.from('gastos_grupales').select('*').in('id', idsVinculados);
     grupalesVinculados = gv || [];
   }
-  const idsMisParticipaciones = (misParticipaciones || []).map(p => p.id);
-  let ggpCuotasVinculadas = [];
-  if (idsMisParticipaciones.length) {
-    const { data: ggpcv } = await sb.from('gastos_grupales_participantes_cuotas').select('*').in('participante_id', idsMisParticipaciones);
-    ggpCuotasVinculadas = ggpcv || [];
-  }
   dbCompartido.gastos = gastos || [];
   dbCompartido.ingresos = ingresos || [];
   dbCompartido.vaquita = vaquita || [];
   dbCompartido.grupales = grupales || [];
   dbCompartido.grupalesParticipantes = grupalesPart || [];
-  dbCompartido.grupalesParticipantesCuotas = ggpCuotas || [];
+  dbCompartido.grupalesParticipantesCuotas = grupalesPartCuotas || [];
   dbCompartido.misParticipaciones = misParticipaciones || [];
   dbCompartido.grupalesVinculados = grupalesVinculados;
-  dbCompartido.grupalesParticipantesCuotasVinculadas = ggpCuotasVinculadas;
 }
 
 function calcProporcionMes(month, year) {
@@ -3670,6 +3655,7 @@ function renderCompartido() {
     return { g, montoARS, esMio, yoAporte, parejaAporte, saldoYo, tieneAporteCustom: aportePartnerARS != null };
   });
   const balanceNeto = gastosConSaldo.reduce((s, x) => s + x.saldoYo, 0);
+  compGastosConSaldo = gastosConSaldo;
 
   document.getElementById('comp-kpis').innerHTML = `
     <div class="card"><div class="card-title">Total compartido del mes</div><div class="card-value amount-negative">${fmtARS(totalComp)}</div><div class="card-sub">${gastosMes.length} gasto${gastosMes.length !== 1 ? 's' : ''}</div></div>
@@ -3706,6 +3692,7 @@ function renderCompartido() {
         ? `<span style="font-size:11px;color:var(--muted)" title="Todavía no se generó la fila real de este mes">—</span>`
         : `<input type="checkbox" ${parejaPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${suQuien}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent2)" title="${parejaPagadoParte ? 'Marcar la parte de tu pareja como pendiente' : 'Marcar la parte de tu pareja como pagada'}">`;
       return `<tr style="${estaPagado ? '' : 'opacity:0.85'}">
+        <td style="text-align:center"><input type="checkbox" ${compSeleccionados.has(g.id) ? 'checked' : ''} onchange="toggleCompSeleccion('${g.id}', this.checked)" style="width:15px;height:15px;accent-color:var(--accent2)" title="Sumar este ítem al total seleccionado"></td>
         <td style="color:var(--muted)">${g.fecha}</td>
         <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}${!estaPagado ? ' <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
         <td><span class="tag">${catObj.emoji} ${g.cat || '—'}</span></td>
@@ -3719,9 +3706,40 @@ function renderCompartido() {
       </tr>`;
     }).join('');
   }
+  renderCompSeleccionTotal();
 
   renderVaquita();
   renderTotalDeudaPareja();
+}
+
+// Selector manual de ítems para saber cuánto pedir/transferir por un subconjunto puntual
+// (ej. "estos 3 ya me los puede transferir ahora"), sin tocar el estado real de pagado.
+let compGastosConSaldo = [];
+let compSeleccionados = new Set();
+
+function toggleCompSeleccion(id, checked) {
+  if (checked) compSeleccionados.add(id); else compSeleccionados.delete(id);
+  renderCompSeleccionTotal();
+}
+
+function limpiarCompSeleccion() {
+  compSeleccionados.clear();
+  document.querySelectorAll('#comp-table-body input[type="checkbox"][onchange^="toggleCompSeleccion"]').forEach(c => c.checked = false);
+  renderCompSeleccionTotal();
+}
+
+function renderCompSeleccionTotal() {
+  const el = document.getElementById('comp-seleccion-total');
+  if (!el) return;
+  if (compSeleccionados.size === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const items = compGastosConSaldo.filter(x => compSeleccionados.has(x.g.id));
+  const neto = items.reduce((s, x) => s + x.saldoYo, 0);
+  const saldado = Math.abs(neto) < 1;
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <span style="font-size:13px"><strong>${items.length}</strong> seleccionado${items.length !== 1 ? 's' : ''}</span>
+    <span style="font-weight:700;font-size:15px;color:${saldado ? 'var(--muted)' : (neto > 0 ? 'var(--red)' : 'var(--green)')}">${saldado ? 'Saldado' : (neto > 0 ? `Debés ${fmtARS(neto)}` : `Te debe ${fmtARS(-neto)}`)}</span>
+    <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="limpiarCompSeleccion()">Limpiar selección</button>`;
 }
 
 // Total consolidado: cuánto le debo a mi pareja en total, sumando las 3 fuentes de deuda cruzada
@@ -3849,7 +3867,7 @@ function renderVaquita() {
 // GASTOS GRUPALES
 // ============================================================
 
-let ggParticipantes = []; // [{nombre, rol, aportado, personaUserId, enCuotas}] — yo no está acá, se agrega al guardar
+let ggParticipantes = []; // [{nombre, rol, aportado, personaUserId, pagaCuotas}] — yo no está acá, se agrega al guardar
 
 // Muestra/oculta y etiqueta el checkbox "Vincular a tu pareja" en los formularios de participantes,
 // según si hay un vínculo confirmado en `parejas`.
@@ -3892,7 +3910,7 @@ function renderGGParticipantesList() {
     const saldo = parte - aportado;
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border-radius:8px">
-      <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}${p.personaUserId ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}${p.enCuotas ? ' <span title="Devuelve en cuotas">💳</span>' : ''}</span>
+      <span style="flex:1;font-size:13px;font-weight:500">${p.nombre}${p.personaUserId ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}${p.pagaCuotas ? ' <span style="font-size:11px;color:var(--accent)">💳 en cuotas</span>' : ''}</span>
       <span style="font-size:12px;color:${p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.rol==='me_debe'?'Me debe':'Le debo'}</span>
       ${monto > 0 ? `<span style="font-size:13px;font-weight:600;min-width:80px;text-align:right" title="Le corresponde ${fmtARS(parte)}${aportado>0?` · Ya puso ${fmtARS(aportado)}`:''}">Saldo: ${fmtARS(saldo)}</span>` : ''}
       <button class="del-btn" onclick="removeGGParticipante(${i})">✕</button>
@@ -3906,14 +3924,13 @@ function addGGParticipante() {
   const aportado = parseFloat(document.getElementById('gg-nuevo-aporte')?.value) || 0;
   const vincularEl = document.getElementById('gg-nueva-vincular');
   const personaUserId = (vincularEl && vincularEl.checked) ? (miParejaActual()?.partnerId || null) : null;
-  const cuotasEl = document.getElementById('gg-nuevo-cuotas');
-  const medio = document.getElementById('gg-medio').value;
-  const enCuotas = (medio === 'credito' && cuotasEl && cuotasEl.checked);
+  const cuotasEl = document.getElementById('gg-nueva-cuotas');
+  const pagaCuotas = !!(cuotasEl && cuotasEl.checked && document.getElementById('gg-medio').value === 'credito');
   if (!nombre) { showToast('Ingresá un nombre', 'error'); return; }
   if (ggParticipantes.find(p => p.nombre.toLowerCase() === nombre.toLowerCase())) {
     showToast('Ya está en la lista', 'error'); return;
   }
-  ggParticipantes.push({ nombre, rol, aportado, personaUserId, enCuotas });
+  ggParticipantes.push({ nombre, rol, aportado, personaUserId, pagaCuotas });
   document.getElementById('gg-nueva-persona').value = '';
   const aporteEl = document.getElementById('gg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
   if (vincularEl) vincularEl.checked = false;
@@ -3932,8 +3949,8 @@ function clearGGForm() {
   document.getElementById('gg-medio').value = 'efectivo';
   document.getElementById('gg-moneda').value = 'ARS';
   const fields = document.getElementById('gg-cuotas-fields'); if(fields) fields.style.display='none';
-  const wrapCuotasPart = document.getElementById('gg-nuevo-cuotas-wrap'); if(wrapCuotasPart) wrapCuotasPart.style.display='none';
-  const cuotasEl = document.getElementById('gg-nuevo-cuotas'); if(cuotasEl) cuotasEl.checked=false;
+  const partWrap = document.getElementById('gg-cuotas-participante-wrap'); if(partWrap) partWrap.style.display='none';
+  const cuotasEl = document.getElementById('gg-nueva-cuotas'); if(cuotasEl) cuotasEl.checked=false;
   const ncuotas = document.getElementById('gg-ncuotas'); if(ncuotas) ncuotas.value='1';
   const prev = document.getElementById('gg-preview'); if(prev) prev.textContent='';
   renderGGParticipantesList();
@@ -3943,15 +3960,16 @@ function clearGGForm() {
 function toggleGGCuotas() {
   const medio = document.getElementById('gg-medio').value;
   const fields = document.getElementById('gg-cuotas-fields');
-  const wrapCuotasPart = document.getElementById('gg-nuevo-cuotas-wrap');
+  const partWrap = document.getElementById('gg-cuotas-participante-wrap');
   if (!fields) return;
   if (medio === 'credito') {
     fields.style.display = 'block';
     fillGGCuotaMesAnio();
-    if (wrapCuotasPart) wrapCuotasPart.style.display = 'flex';
+    if (partWrap) partWrap.style.display = 'block';
   } else {
     fields.style.display = 'none';
-    if (wrapCuotasPart) wrapCuotasPart.style.display = 'none';
+    if (partWrap) partWrap.style.display = 'none';
+    const cb = document.getElementById('gg-nueva-cuotas'); if (cb) cb.checked = false;
   }
   updateGGPreview();
 }
@@ -3979,39 +3997,9 @@ function abrirEditGrupal(grupalId) {
   document.getElementById('eg-descripcion').value = g.descripcion || '';
   document.getElementById('eg-grupal-monto').value = g.monto || '';
   document.getElementById('eg-grupal-moneda').value = g.moneda || 'ARS';
-  const wrapCuotas = document.getElementById('eg-nuevo-cuotas-wrap');
-  if (wrapCuotas) wrapCuotas.style.display = (g.medio === 'credito') ? 'block' : 'none';
-  const cuotasEl = document.getElementById('eg-nuevo-cuotas'); if (cuotasEl) cuotasEl.checked = false;
-  const cuotasFieldsEl = document.getElementById('eg-nuevo-cuotas-fields'); if (cuotasFieldsEl) cuotasFieldsEl.style.display = 'none';
   renderEditGrupalLista(grupalId);
   actualizarVinculoUI();
   openModal('modal-edit-grupal');
-}
-
-// Cuando cambia el monto_parte de un participante que ya tiene cuotas generadas
-// (por editar el total del gasto, agregar o quitar participantes), reajusta el
-// cronograma para que vuelva a sumar el nuevo monto_parte. Las cuotas ya pagadas
-// NO se tocan (lo que ya se cobró/pagó quedó así históricamente); el ajuste se
-// reparte solo entre las cuotas todavía pendientes.
-async function recalcularCuotasParticipante(participanteId, nuevoMontoParte) {
-  const cuotas = dbCompartido.grupalesParticipantesCuotas
-    .filter(c => c.participante_id === participanteId)
-    .sort((a, b) => a.cuota_num - b.cuota_num);
-  if (!cuotas.length) return;
-
-  const pagadas = cuotas.filter(c => c.pagado);
-  const pendientes = cuotas.filter(c => !c.pagado);
-  const totalPagado = pagadas.reduce((s, c) => s + (c.monto || 0), 0);
-
-  if (pendientes.length === 0) return; // ya está todo pagado, no queda nada que redistribuir
-
-  const restante = Math.max(0, nuevoMontoParte - totalPagado);
-  const nuevoCuotaMonto = Math.round(restante / pendientes.length * 100) / 100;
-
-  await Promise.all(pendientes.map(c =>
-    sb.from('gastos_grupales_participantes_cuotas').update({ monto: nuevoCuotaMonto }).eq('id', c.id)
-  ));
-  pendientes.forEach(c => c.monto = nuevoCuotaMonto);
 }
 
 async function guardarDatosGrupal() {
@@ -4033,9 +4021,6 @@ async function guardarDatosGrupal() {
     .eq('gasto_grupal_id', grupalId);
   if (res2.error) { showToast('Error al actualizar participantes: ' + res2.error.message, 'error'); return; }
 
-  // 2b. Si alguno ya tiene cuotas generadas, reajustar su cronograma pendiente al nuevo monto_parte
-  await Promise.all(parts.map(p => recalcularCuotasParticipante(p.id, parteMonto)));
-
   // 3. Recargar datos frescos y re-renderizar
   await loadCompartido();
   renderGrupales();
@@ -4051,43 +4036,15 @@ function renderEditGrupalLista(grupalId) {
   const nTotal = parts.length;
   const parteMonto = g ? Math.round(g.monto / nTotal * 100) / 100 : 0;
 
-  document.getElementById('eg-grupal-lista').innerHTML = parts.map(p => {
-    const cuotasP = dbCompartido.grupalesParticipantesCuotas.filter(c => c.participante_id === p.id).sort((a,b) => a.cuota_num - b.cuota_num);
-    const fmtMon = v => g?.moneda==='USD' ? fmtUSD(v) : fmtARS(v);
-    const cuotasHTML = cuotasP.length ? `
-      <div style="width:100%;margin-top:6px;display:flex;flex-direction:column;gap:4px">
-        ${cuotasP.map(c => `
-          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11.5px;padding:4px 8px;background:var(--bg);border-radius:6px">
-            <span>Cuota ${String(c.cuota_num).padStart(2,'0')}/${String(c.cuota_total).padStart(2,'0')} · ${c.fecha.slice(0,7)}</span>
-            <span style="display:flex;align-items:center;gap:6px">
-              <span>${fmtMon(c.monto)}</span>
-              ${c.pagado ? `<span style="color:var(--green)">✓</span>` : `<button class="btn btn-success" style="padding:2px 8px;font-size:11px" onclick="pagarCuotaParticipanteGrupal('${c.id}')">✓</button>`}
-            </span>
-          </div>`).join('')}
-      </div>` : '';
-    return `
+  document.getElementById('eg-grupal-lista').innerHTML = parts.map(p => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
-      <span style="flex:1;font-size:13px;font-weight:500;min-width:80px">${p.nombre}${p.persona_user_id ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}${cuotasP.length ? ' <span title="Devuelve en cuotas">💳</span>' : ''}</span>
+      <span style="flex:1;font-size:13px;font-weight:500;min-width:80px">${p.nombre}${p.persona_user_id ? ' <span title="Vinculado a cuenta real">🔗</span>' : ''}</span>
       <span style="font-size:12px;color:${p.es_yo?'var(--accent)':p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.es_yo?'Yo':p.rol==='me_debe'?'Me debe':'Le debo'}</span>
       <span style="font-size:13px;font-weight:600;min-width:80px;text-align:right">${g?.moneda==='USD'?fmtUSD(p.monto_parte):fmtARS(p.monto_parte)}</span>
-      ${!p.es_yo && !cuotasP.length ? `<input type="number" min="0" value="${p.monto_aportado||0}" title="Cuánto ya puso" onchange="actualizarAporteParticipante('${p.id}', this.value)" style="width:100px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;outline:none">` : ''}
-      ${!p.es_yo && !cuotasP.length && g?.medio === 'credito' ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="toggleFormCuotasExistente('${p.id}')">💳 Poner en cuotas</button>` : ''}
+      ${!p.es_yo ? `<input type="number" min="0" value="${p.monto_aportado||0}" title="Cuánto ya puso" onchange="actualizarAporteParticipante('${p.id}', this.value)" style="width:100px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;outline:none">` : ''}
       ${!p.es_yo ? `<button class="del-btn" title="${p.persona_user_id ? 'Vinculado — click para desvincular' : 'Vincular a tu pareja'}" onclick="toggleVincularParticipanteEdit('${p.id}')">${p.persona_user_id ? '🔗' : '🔓'}</button>` : ''}
       ${!p.es_yo ? `<button class="del-btn" onclick="quitarParticipanteEdit('${p.id}','${grupalId}')">✕</button>` : ''}
-      ${cuotasHTML}
-      ${!p.es_yo && !cuotasP.length && g?.medio === 'credito' ? `
-      <div id="cuotas-form-${p.id}" style="display:none;width:100%;margin-top:6px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <div class="form-group"><label style="font-size:11px">Cantidad de cuotas</label><input type="number" id="cf-ncuotas-${p.id}" min="2" max="60" value="2" style="width:100%"></div>
-          <div class="form-group"><label style="font-size:11px">Mes 1ª cuota</label><select id="cf-mes-${p.id}" style="width:100%"></select></div>
-          <div class="form-group"><label style="font-size:11px">Año 1ª cuota</label><select id="cf-anio-${p.id}" style="width:100%"></select></div>
-        </div>
-        <div style="margin-top:8px;text-align:right">
-          <button class="btn btn-primary" style="padding:4px 12px;font-size:12px" onclick="generarCuotasParticipanteExistente('${p.id}')">Generar cuotas</button>
-        </div>
-      </div>` : ''}
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
 
 async function toggleVincularParticipanteEdit(partId) {
@@ -4116,6 +4073,35 @@ async function actualizarAporteParticipante(partId, value) {
   showToast('Aporte actualizado ✓');
 }
 
+// Marca/desmarca como pagada una cuota puntual de un participante que devuelve en cuotas,
+// y recalcula monto_aportado/pagado del participante en base a la suma de sus cuotas pagadas.
+async function toggleCuotaParticipante(cuotaId) {
+  const c = dbCompartido.grupalesParticipantesCuotas.find(x => x.id === cuotaId);
+  if (!c) return;
+  const nuevoPagado = !c.pagado;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { error } = await sb.from('gastos_grupales_participantes_cuotas')
+    .update({ pagado: nuevoPagado, fecha_pago: nuevoPagado ? hoy : null }).eq('id', cuotaId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  c.pagado = nuevoPagado;
+  c.fecha_pago = nuevoPagado ? hoy : null;
+
+  const cuotasDeParticipante = dbCompartido.grupalesParticipantesCuotas.filter(x => x.participante_id === c.participante_id);
+  const aportado = cuotasDeParticipante.filter(x => x.pagado).reduce((s, x) => s + (x.monto || 0), 0);
+  const p = dbCompartido.grupalesParticipantes.find(x => x.id === c.participante_id);
+  if (p) {
+    const nuevoPagadoTotal = aportado >= (p.monto_parte || 0);
+    await sb.from('gastos_grupales_participantes')
+      .update({ monto_aportado: aportado, pagado: nuevoPagadoTotal, fecha_pago: nuevoPagadoTotal ? hoy : null })
+      .eq('id', p.id);
+    p.monto_aportado = aportado;
+    p.pagado = nuevoPagadoTotal;
+    p.fecha_pago = nuevoPagadoTotal ? hoy : null;
+  }
+  renderGrupales();
+  showToast(nuevoPagado ? 'Cuota marcada como pagada ✓' : 'Cuota marcada como pendiente');
+}
+
 async function agregarParticipanteEdit() {
   const grupalId = document.getElementById('eg-grupal-id').value;
   const nombre = document.getElementById('eg-nueva-persona').value.trim();
@@ -4141,8 +4127,6 @@ async function agregarParticipanteEdit() {
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
   ));
   partsActuales.forEach(p => p.monto_parte = parteMonto);
-  // Si alguno de los participantes existentes ya tenía cuotas generadas, reajustar su cronograma pendiente
-  await Promise.all(partsActuales.map(p => recalcularCuotasParticipante(p.id, parteMonto)));
 
   // Insert new participant
   const { data: newP, error } = await sb.from('gastos_grupales_participantes')
@@ -4151,116 +4135,12 @@ async function agregarParticipanteEdit() {
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
 
   dbCompartido.grupalesParticipantes.push(newP);
-
-  // Si se tildó "también en cuotas", generar su cronograma
-  const cuotasEl = document.getElementById('eg-nuevo-cuotas');
-  if (g.medio === 'credito' && cuotasEl && cuotasEl.checked) {
-    const ncuotas = parseInt(document.getElementById('eg-nuevo-ncuotas').value) || 1;
-    const mesInicio = parseInt(document.getElementById('eg-nuevo-cuota-mes').value);
-    const anioInicio = parseInt(document.getElementById('eg-nuevo-cuota-anio').value);
-    if (ncuotas > 1) {
-      const cuotaMonto = Math.round(parteMonto / ncuotas * 100) / 100;
-      const cuotaRows = [];
-      for (let i = 0; i < ncuotas; i++) {
-        let m = mesInicio + i, y = anioInicio;
-        while (m > 11) { m -= 12; y++; }
-        cuotaRows.push({
-          participante_id: newP.id, user_id: currentUser.id,
-          cuota_num: i + 1, cuota_total: ncuotas,
-          monto: cuotaMonto, moneda: g.moneda,
-          fecha: `${y}-${String(m + 1).padStart(2, '0')}-01`,
-          pagado: false
-        });
-      }
-      const { data: ggpcData, error: ggpcErr } = await sb.from('gastos_grupales_participantes_cuotas').insert(cuotaRows).select();
-      if (ggpcErr) { showToast('Participante agregado, pero falló el cronograma de cuotas: ' + ggpcErr.message, 'error'); }
-      else { dbCompartido.grupalesParticipantesCuotas.push(...(ggpcData || [])); }
-    }
-  }
-
   document.getElementById('eg-nueva-persona').value = '';
   const aporteEl = document.getElementById('eg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
   if (vincularEl) vincularEl.checked = false;
-  if (cuotasEl) cuotasEl.checked = false;
-  const cuotasFieldsEl = document.getElementById('eg-nuevo-cuotas-fields'); if (cuotasFieldsEl) cuotasFieldsEl.style.display = 'none';
   renderEditGrupalLista(grupalId);
   renderGrupales();
   showToast('Participante agregado ✓');
-}
-
-function toggleEgNuevoCuotasFields() {
-  const cuotasEl = document.getElementById('eg-nuevo-cuotas');
-  const fields = document.getElementById('eg-nuevo-cuotas-fields');
-  if (!fields) return;
-  if (cuotasEl && cuotasEl.checked) {
-    fields.style.display = 'block';
-    fillEgCuotaMesAnio();
-  } else {
-    fields.style.display = 'none';
-  }
-}
-
-function fillEgCuotaMesAnio() {
-  const mesEl = document.getElementById('eg-nuevo-cuota-mes');
-  const anioEl = document.getElementById('eg-nuevo-cuota-anio');
-  if (!mesEl || !anioEl) return;
-  const hoy = new Date();
-  let nextM = hoy.getMonth() + 1, nextY = hoy.getFullYear();
-  if (nextM > 11) { nextM = 0; nextY++; }
-  mesEl.innerHTML = MONTHS.map((m, i) => `<option value="${i}" ${i === nextM ? 'selected' : ''}>${m}</option>`).join('');
-  const years = []; for (let y = hoy.getFullYear(); y <= hoy.getFullYear() + 3; y++) years.push(y);
-  anioEl.innerHTML = years.map(y => `<option value="${y}" ${y === nextY ? 'selected' : ''}>${y}</option>`).join('');
-}
-
-// Convierte un participante existente (que todavía no tiene cronograma) a pago en cuotas.
-function toggleFormCuotasExistente(partId) {
-  const el = document.getElementById(`cuotas-form-${partId}`);
-  if (!el) return;
-  const abrir = el.style.display === 'none' || !el.style.display;
-  el.style.display = abrir ? 'block' : 'none';
-  if (abrir) {
-    const mesEl = document.getElementById(`cf-mes-${partId}`);
-    const anioEl = document.getElementById(`cf-anio-${partId}`);
-    if (mesEl && anioEl && mesEl.options.length === 0) {
-      const hoy = new Date();
-      let nextM = hoy.getMonth() + 1, nextY = hoy.getFullYear();
-      if (nextM > 11) { nextM = 0; nextY++; }
-      mesEl.innerHTML = MONTHS.map((m, i) => `<option value="${i}" ${i === nextM ? 'selected' : ''}>${m}</option>`).join('');
-      const years = []; for (let y = hoy.getFullYear(); y <= hoy.getFullYear() + 3; y++) years.push(y);
-      anioEl.innerHTML = years.map(y => `<option value="${y}" ${y === nextY ? 'selected' : ''}>${y}</option>`).join('');
-    }
-  }
-}
-
-async function generarCuotasParticipanteExistente(partId) {
-  const p = dbCompartido.grupalesParticipantes.find(x => x.id === partId);
-  if (!p) return;
-  const ncuotas = parseInt(document.getElementById(`cf-ncuotas-${partId}`).value) || 1;
-  const mesInicio = parseInt(document.getElementById(`cf-mes-${partId}`).value);
-  const anioInicio = parseInt(document.getElementById(`cf-anio-${partId}`).value);
-  if (ncuotas < 2) { showToast('Poné 2 cuotas o más (si es 1, dejalo como pago único)', 'error'); return; }
-  if ((p.monto_aportado || 0) > 0) {
-    showToast('Este participante ya tiene un aporte manual cargado; para pasar a cuotas primero poné su aporte en 0.', 'error'); return;
-  }
-  const cuotaMonto = Math.round((p.monto_parte || 0) / ncuotas * 100) / 100;
-  const cuotaRows = [];
-  for (let i = 0; i < ncuotas; i++) {
-    let m = mesInicio + i, y = anioInicio;
-    while (m > 11) { m -= 12; y++; }
-    cuotaRows.push({
-      participante_id: p.id, user_id: currentUser.id,
-      cuota_num: i + 1, cuota_total: ncuotas,
-      monto: cuotaMonto, moneda: p.moneda,
-      fecha: `${y}-${String(m + 1).padStart(2, '0')}-01`,
-      pagado: false
-    });
-  }
-  const { data: ggpcData, error } = await sb.from('gastos_grupales_participantes_cuotas').insert(cuotaRows).select();
-  if (error) { showToast('Error al generar cuotas: ' + error.message, 'error'); return; }
-  dbCompartido.grupalesParticipantesCuotas.push(...(ggpcData || []));
-  renderEditGrupalLista(p.gasto_grupal_id);
-  renderGrupales();
-  showToast('Cronograma de cuotas generado ✓');
 }
 
 async function quitarParticipanteEdit(partId, grupalId) {
@@ -4282,8 +4162,6 @@ async function quitarParticipanteEdit(partId, grupalId) {
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
   ));
   partsActuales.forEach(p => p.monto_parte = parteMonto);
-  // Si alguno de los que quedan ya tenía cuotas generadas, reajustar su cronograma pendiente
-  await Promise.all(partsActuales.map(p => recalcularCuotasParticipante(p.id, parteMonto)));
 
   renderEditGrupalLista(grupalId);
   renderGrupales();
@@ -4309,6 +4187,14 @@ async function addGastoGrupal() {
   const nTotal = ggParticipantes.length + 1; // +1 yo
   const parteMonto = Math.round(monto / nTotal * 100) / 100;
 
+  // Si es crédito, calculamos el cronograma de cuotas de una — se usa para mi gasto real y,
+  // opcionalmente, para los participantes que también pagan en cuotas (mismo cronograma que el mío).
+  const esCredito = medio === 'credito';
+  const ncuotas = esCredito ? (parseInt(document.getElementById('gg-ncuotas').value) || 1) : 1;
+  const mesInicio = esCredito ? parseInt(document.getElementById('gg-cuota-mes').value) : null;
+  const anioInicio = esCredito ? parseInt(document.getElementById('gg-cuota-anio').value) : null;
+  const cuotaMonto = esCredito ? Math.round(parteMonto / ncuotas * 100) / 100 : null;
+
   setBtnLoading('btn-add-grupal', true);
 
   const { data: ggData, error: ggErr } = await sb.from('gastos_grupales')
@@ -4327,23 +4213,14 @@ async function addGastoGrupal() {
     }))
   ];
 
-  const { error: partErr } = await sb.from('gastos_grupales_participantes').insert(rows);
+  const { data: partData, error: partErr } = await sb.from('gastos_grupales_participantes').insert(rows).select();
   if (partErr) { showToast('Error al guardar participantes: ' + partErr.message, 'error'); setBtnLoading('btn-add-grupal', false); return; }
 
   // Insertar mi parte como gasto real — en cuotas si medio es crédito
   const notasGasto = notas || `Gasto grupal. Total: ${moneda === 'USD' ? 'USD $' + monto : '$' + Math.round(monto).toLocaleString('es-AR')}`;
   const descGasto = `${desc} (parte grupal — ${nTotal} personas)`;
 
-  // Guardamos el cronograma (ncuotas/mes/año) fuera del if para poder reutilizarlo
-  // al generar las cuotas de los participantes que también devuelven en cuotas.
-  let ncuotasSchedule = 0, mesInicioSchedule = 0, anioInicioSchedule = 0;
-
-  if (medio === 'credito') {
-    const ncuotas = parseInt(document.getElementById('gg-ncuotas').value) || 1;
-    const mesInicio = parseInt(document.getElementById('gg-cuota-mes').value);
-    const anioInicio = parseInt(document.getElementById('gg-cuota-anio').value);
-    ncuotasSchedule = ncuotas; mesInicioSchedule = mesInicio; anioInicioSchedule = anioInicio;
-    const cuotaMonto = Math.round(parteMonto / ncuotas * 100) / 100;
+  if (esCredito) {
     const planId = generatePlanId();
     const cuotaRows = [];
     for (let i = 0; i < ncuotas; i++) {
@@ -4359,77 +4236,50 @@ async function addGastoGrupal() {
       });
     }
     const { data: cuotasData, error: cuotasErr } = await sb.from('gastos').insert(cuotaRows).select();
-    setBtnLoading('btn-add-grupal', false);
     if (cuotasErr) { showToast('Error al registrar cuotas: ' + cuotasErr.message, 'error'); }
     else { (cuotasData||[]).forEach(g => db.gastos.unshift({...g, desc: g.descripcion})); }
+
+    // Participantes que también pagan en cuotas — mismo cronograma de meses que el mío
+    const partesConCuotas = ggParticipantes.filter(p => p.pagaCuotas);
+    if (partesConCuotas.length > 0 && partData) {
+      const cuotasPartRows = [];
+      partesConCuotas.forEach(pg => {
+        const partReal = partData.find(pr => pr.nombre === pg.nombre);
+        if (!partReal) return;
+        for (let i = 0; i < ncuotas; i++) {
+          let m = mesInicio + i, y = anioInicio;
+          while (m > 11) { m -= 12; y++; }
+          cuotasPartRows.push({
+            participante_id: partReal.id, user_id: currentUser.id,
+            cuota_num: i+1, cuota_total: ncuotas, monto: cuotaMonto, moneda,
+            fecha: `${y}-${String(m+1).padStart(2,'0')}-01`, pagado: false
+          });
+        }
+      });
+      if (cuotasPartRows.length > 0) {
+        const { data: cuotasPartData, error: cuotasPartErr } = await sb.from('gastos_grupales_participantes_cuotas').insert(cuotasPartRows).select();
+        if (cuotasPartErr) { showToast('Gasto grupal guardado, pero falló el cronograma de cuotas de participantes: ' + cuotasPartErr.message, 'error'); }
+        else { dbCompartido.grupalesParticipantesCuotas.push(...(cuotasPartData||[])); }
+      }
+    }
   } else {
     const { data: gastoData, error: gastoErr } = await sb.from('gastos').insert({
       user_id: currentUser.id, fecha, descripcion: descGasto,
       monto: parteMonto, moneda, cat: categoria, tipo: 'inusual',
       medio, notas: notasGasto, es_compartido: false
     }).select().single();
-    setBtnLoading('btn-add-grupal', false);
     if (gastoErr) { showToast('Error al registrar tu gasto: ' + gastoErr.message, 'error'); }
     else { db.gastos.unshift({...gastoData, desc: gastoData.descripcion}); }
   }
 
+  setBtnLoading('btn-add-grupal', false);
   dbCompartido.grupales.unshift(ggData);
-  const { data: newPart } = await sb.from('gastos_grupales_participantes').select('*').eq('gasto_grupal_id', ggData.id);
-  dbCompartido.grupalesParticipantes.push(...(newPart||[]));
-
-  // Participantes que también devuelven su parte en cuotas (mismo cronograma que la mía)
-  const conCuotas = ggParticipantes.filter(p => p.enCuotas);
-  if (medio === 'credito' && ncuotasSchedule > 1 && conCuotas.length > 0 && newPart) {
-    const cuotaRowsParts = [];
-    conCuotas.forEach(pc => {
-      const partRow = newPart.find(np => !np.es_yo && np.nombre.toLowerCase() === pc.nombre.toLowerCase());
-      if (!partRow) return;
-      const cuotaMontoPart = Math.round(parteMonto / ncuotasSchedule * 100) / 100;
-      for (let i = 0; i < ncuotasSchedule; i++) {
-        let m = mesInicioSchedule + i, y = anioInicioSchedule;
-        while (m > 11) { m -= 12; y++; }
-        cuotaRowsParts.push({
-          participante_id: partRow.id, user_id: currentUser.id,
-          cuota_num: i + 1, cuota_total: ncuotasSchedule,
-          monto: cuotaMontoPart, moneda,
-          fecha: `${y}-${String(m + 1).padStart(2, '0')}-01`,
-          pagado: false
-        });
-      }
-    });
-    if (cuotaRowsParts.length) {
-      const { data: ggpcData, error: ggpcErr } = await sb.from('gastos_grupales_participantes_cuotas').insert(cuotaRowsParts).select();
-      if (ggpcErr) { showToast('Gasto grupal guardado, pero falló el cronograma de cuotas de participantes: ' + ggpcErr.message, 'error'); }
-      else { dbCompartido.grupalesParticipantesCuotas.push(...(ggpcData || [])); }
-    }
-  }
+  dbCompartido.grupalesParticipantes.push(...(partData||[]));
 
   clearGGForm();
   renderGrupales();
   renderDashboard();
   showToast('Gasto grupal registrado ✓');
-}
-
-async function pagarCuotaParticipanteGrupal(cuotaId) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const c = dbCompartido.grupalesParticipantesCuotas.find(x => x.id === cuotaId);
-  if (!c) return;
-  const { error } = await sb.from('gastos_grupales_participantes_cuotas').update({ pagado: true, fecha_pago: hoy }).eq('id', cuotaId);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
-  c.pagado = true; c.fecha_pago = hoy;
-
-  // Recalcular monto_aportado/pagado agregados en el participante a partir de sus cuotas
-  const p = dbCompartido.grupalesParticipantes.find(x => x.id === c.participante_id);
-  if (p) {
-    const cuotasDeEste = dbCompartido.grupalesParticipantesCuotas.filter(x => x.participante_id === p.id);
-    const aportado = cuotasDeEste.filter(x => x.pagado).reduce((s, x) => s + (x.monto || 0), 0);
-    const todasPagadas = cuotasDeEste.every(x => x.pagado);
-    const { error: err2 } = await sb.from('gastos_grupales_participantes')
-      .update({ monto_aportado: aportado, pagado: todasPagadas, fecha_pago: todasPagadas ? hoy : null }).eq('id', p.id);
-    if (!err2) { p.monto_aportado = aportado; p.pagado = todasPagadas; p.fecha_pago = todasPagadas ? hoy : null; }
-  }
-  renderGrupales();
-  showToast('Cuota registrada ✓');
 }
 
 async function pagarGrupal(participanteId) {
@@ -4587,39 +4437,34 @@ function renderGrupales() {
       const aportado = p.monto_aportado || 0;
       const saldo = Math.max(0, (p.monto_parte||0) - aportado);
       const fmtMon = v => p.moneda==='USD' ? fmtUSD(v) : fmtARS(v);
-      const cuotasP = dbCompartido.grupalesParticipantesCuotas.filter(c => c.participante_id === p.id).sort((a,b) => a.cuota_num - b.cuota_num);
-
-      if (cuotasP.length > 0) {
-        const pendCuotas = cuotasP.filter(c => !c.pagado);
-        const proxima = pendCuotas[0];
-        return `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div style="flex:1">
-            <span style="font-size:13px;font-weight:500">${p.nombre} <span title="Devuelve en cuotas" style="font-size:11px">💳</span></span>
-            <span style="margin-left:8px;font-size:12px;color:${p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.rol==='me_debe'?'me debe':'le debo'}</span>
-            <div style="font-size:11px;color:var(--muted)">${cuotasP.length - pendCuotas.length}/${cuotasP.length} cuotas pagadas${proxima ? ` · próxima: ${fmtMon(proxima.monto)} (${proxima.fecha.slice(0,7)})` : ''}</div>
-          </div>
-          <div style="font-weight:600;font-size:13px;min-width:90px;text-align:right">${p.pagado ? fmtMon(p.monto_parte) : fmtMon(saldo)}</div>
-          <div style="min-width:120px;text-align:right">
-            ${p.pagado
-              ? `<span style="font-size:12px;color:var(--green)">✓ Saldado</span>`
-              : `<button class="btn btn-success" style="padding:4px 10px;font-size:12px" onclick="pagarCuotaParticipanteGrupal('${proxima.id}')">${p.rol==='me_debe'?'✓ Cobrar cuota':'✓ Pagar cuota'}</button>`}
-          </div>
-        </div>`;
-      }
-
+      const cuotasP = (dbCompartido.grupalesParticipantesCuotas || []).filter(c => c.participante_id === p.id).sort((a,b) => a.cuota_num - b.cuota_num);
+      const cuotasHTML = cuotasP.length > 0 ? `
+        <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+          ${cuotasP.map(c => {
+            const [y, m] = c.fecha.split('-');
+            const mesLabel = `${MONTHS[parseInt(m)-1]} ${y}`;
+            return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;padding:4px 8px;background:var(--bg);border-radius:6px">
+              <span style="color:var(--muted)">Cuota ${c.cuota_num}/${c.cuota_total} · ${mesLabel} · ${fmtMon(c.monto)}</span>
+              ${c.pagado
+                ? `<span style="color:var(--green);cursor:pointer" onclick="toggleCuotaParticipante('${c.id}')" title="Click para desmarcar">✓ pagada</span>`
+                : `<button class="btn btn-ghost" style="padding:2px 8px;font-size:11px" onclick="toggleCuotaParticipante('${c.id}')">Marcar pagada</button>`}
+            </div>`;
+          }).join('')}
+        </div>` : '';
       return `
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
           <span style="font-size:13px;font-weight:500">${p.nombre}</span>
           <span style="margin-left:8px;font-size:12px;color:${p.rol==='me_debe'?'var(--green)':'var(--warn)'}">${p.rol==='me_debe'?'me debe':'le debo'}</span>
-          ${aportado>0 && !p.pagado ? `<div style="font-size:11px;color:var(--muted)">Le corresponde ${fmtMon(p.monto_parte)} · ya puso ${fmtMon(aportado)}</div>` : ''}
+          ${cuotasP.length > 0 ? `<span style="margin-left:6px;font-size:11px;color:var(--accent)">💳 en cuotas</span>` : ''}
+          ${aportado>0 && !p.pagado && cuotasP.length===0 ? `<div style="font-size:11px;color:var(--muted)">Le corresponde ${fmtMon(p.monto_parte)} · ya puso ${fmtMon(aportado)}</div>` : ''}
+          ${cuotasHTML}
         </div>
         <div style="font-weight:600;font-size:13px;min-width:90px;text-align:right">${p.pagado ? fmtMon(p.monto_parte) : fmtMon(saldo)}</div>
         <div style="min-width:120px;text-align:right">
           ${p.pagado
             ? `<span style="font-size:12px;color:var(--green)">✓ ${p.fecha_pago||''}</span>`
-            : `<button class="btn btn-success" style="padding:4px 10px;font-size:12px" onclick="pagarGrupal('${p.id}')">${p.rol==='me_debe'?'✓ Cobrado':'✓ Pagado'}</button>`}
+            : (cuotasP.length === 0 ? `<button class="btn btn-success" style="padding:4px 10px;font-size:12px" onclick="pagarGrupal('${p.id}')">${p.rol==='me_debe'?'✓ Cobrado':'✓ Pagado'}</button>` : '')}
         </div>
       </div>`;
     }).join('');
