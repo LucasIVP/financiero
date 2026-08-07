@@ -663,6 +663,7 @@
         <div class="form-group"><label>Monto total</label><input type="number" id="gg-monto" placeholder="0" oninput="updateGGPreview()"></div>
         <div class="form-group"><label>Moneda</label><select id="gg-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
         <div class="form-group"><label>Medio de pago</label><select id="gg-medio" onchange="toggleGGCuotas()"><option value="credito">Crédito</option><option value="debito">Débito</option><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select></div>
+        <div class="form-group" id="gg-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="gg-tarjeta-id"><option value="">— Sin asignar —</option></select></div>
         <div class="form-group"><label>Categoría</label><select id="gg-cat"></select></div>
         <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="gg-notas" placeholder="Opcional"></div>
         <div class="form-group" id="gg-cuotas-fields" style="display:none;grid-column:1/-1">
@@ -2181,7 +2182,7 @@ function renderGastos(){
     const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?'Marcar como pendiente':'Marcar como pagado'}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
-    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}${(()=>{if(g.medio!=='credito')return'';const t=g.tarjeta_id?(db.tarjetas||[]).find(x=>x.id===g.tarjeta_id):null;return t?` <span class="badge" style="background:${t.color||'#6c63ff'}22;color:${t.color||'#6c63ff'}" title="${t.banco||t.red||''}">${t.nombre}</span>`:` <span class="badge" style="background:rgba(255,179,71,0.15);color:var(--warn)" title="No se asignó tarjeta a este gasto">❓ sin tarjeta</span>`;})()}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -2271,6 +2272,10 @@ function populateTarjetaSelects() {
   const ptSel = document.getElementById('pt-tarjeta-id');
   if (ptSel) ptSel.innerHTML = '<option value="">— Sin asignar —</option>' +
     (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  // Also populate gasto grupal tarjeta select
+  const ggSel = document.getElementById('gg-tarjeta-id');
+  if (ggSel) ggSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre} (${t.banco || t.red})</option>`).join('');
 }
 
 function renderTarjetas() {
@@ -4111,6 +4116,8 @@ function clearGGForm() {
   ['gg-desc','gg-monto','gg-notas','gg-nueva-persona','gg-nuevo-aporte'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('gg-medio').value = 'efectivo';
   document.getElementById('gg-moneda').value = 'ARS';
+  const tcField = document.getElementById('gg-tarjeta-field'); if(tcField) tcField.style.display='none';
+  const tcSel = document.getElementById('gg-tarjeta-id'); if(tcSel) tcSel.value='';
   const fields = document.getElementById('gg-cuotas-fields'); if(fields) fields.style.display='none';
   const partWrap = document.getElementById('gg-cuotas-participante-wrap'); if(partWrap) partWrap.style.display='none';
   const cuotasEl = document.getElementById('gg-nueva-cuotas'); if(cuotasEl) cuotasEl.checked=false;
@@ -4124,6 +4131,8 @@ function toggleGGCuotas() {
   const medio = document.getElementById('gg-medio').value;
   const fields = document.getElementById('gg-cuotas-fields');
   const partWrap = document.getElementById('gg-cuotas-participante-wrap');
+  const tcField = document.getElementById('gg-tarjeta-field');
+  if (tcField) tcField.style.display = medio === 'credito' ? 'flex' : 'none';
   if (!fields) return;
   if (medio === 'credito') {
     fields.style.display = 'block';
@@ -4339,6 +4348,7 @@ async function addGastoGrupal() {
   const medio = document.getElementById('gg-medio').value;
   const categoria = document.getElementById('gg-cat').value;
   const notas = document.getElementById('gg-notas').value.trim();
+  const tarjetaId = medio === 'credito' ? (document.getElementById('gg-tarjeta-id')?.value || null) : null;
 
   if (!fecha || !desc || isNaN(monto) || monto <= 0) {
     showToast('Completá fecha, descripción y monto.', 'error'); return;
@@ -4361,7 +4371,7 @@ async function addGastoGrupal() {
   setBtnLoading('btn-add-grupal', true);
 
   const { data: ggData, error: ggErr } = await sb.from('gastos_grupales')
-    .insert({ user_id: currentUser.id, descripcion: desc, monto, moneda, medio, fecha, categoria, notas })
+    .insert({ user_id: currentUser.id, descripcion: desc, monto, moneda, medio, fecha, categoria, notas, tarjeta_id: tarjetaId })
     .select().single();
 
   if (ggErr) { showToast('Error: ' + ggErr.message, 'error'); setBtnLoading('btn-add-grupal', false); return; }
@@ -4395,7 +4405,7 @@ async function addGastoGrupal() {
         descripcion: `${descGasto} — cuota ${String(i+1).padStart(2,'0')}/${String(ncuotas).padStart(2,'0')}`,
         monto: cuotaMonto, moneda, cat: categoria, tipo: 'inusual', medio,
         notas: notasGasto, cuota_num: i+1, cuota_total: ncuotas,
-        cuota_monto: cuotaMonto, plan_id: planId, es_compartido: false
+        cuota_monto: cuotaMonto, plan_id: planId, es_compartido: false, tarjeta_id: tarjetaId
       });
     }
     const { data: cuotasData, error: cuotasErr } = await sb.from('gastos').insert(cuotaRows).select();
@@ -4429,7 +4439,7 @@ async function addGastoGrupal() {
     const { data: gastoData, error: gastoErr } = await sb.from('gastos').insert({
       user_id: currentUser.id, fecha, descripcion: descGasto,
       monto: parteMonto, moneda, cat: categoria, tipo: 'inusual',
-      medio, notas: notasGasto, es_compartido: false
+      medio, notas: notasGasto, es_compartido: false, tarjeta_id: tarjetaId
     }).select().single();
     if (gastoErr) { showToast('Error al registrar tu gasto: ' + gastoErr.message, 'error'); }
     else { db.gastos.unshift({...gastoData, desc: gastoData.descripcion}); }
@@ -4453,7 +4463,7 @@ async function addGastoGrupal() {
             descripcion: `${descGasto} — cuota ${String(i+1).padStart(2,'0')}/${String(ncuotas).padStart(2,'0')}`,
             monto: cuotaMonto, moneda, cat: categoria, tipo: 'inusual', medio,
             notas: notasGasto, cuota_num: i+1, cuota_total: ncuotas,
-            cuota_monto: cuotaMonto, plan_id: planIdPersona, es_compartido: false
+            cuota_monto: cuotaMonto, plan_id: planIdPersona, es_compartido: false, tarjeta_id: tarjetaId
           });
         }
         const { error: cuotasPersonaErr } = await sb.from('gastos').insert(cuotaRowsPersona);
@@ -4462,7 +4472,7 @@ async function addGastoGrupal() {
         const { error: gastoPersonaErr } = await sb.from('gastos').insert({
           user_id: pg.personaUserId, fecha, descripcion: descGasto,
           monto: parteMonto, moneda, cat: categoria, tipo: 'inusual',
-          medio, notas: notasGasto, es_compartido: false
+          medio, notas: notasGasto, es_compartido: false, tarjeta_id: tarjetaId
         });
         if (gastoPersonaErr) showToast(`Gasto grupal guardado, pero falló registrar el gasto real de ${pg.nombre}: ` + gastoPersonaErr.message, 'error');
       }
@@ -4670,7 +4680,7 @@ function renderGrupales() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
         <div>
           <div style="font-weight:700;font-size:15px">${g.descripcion} ${allDone?'<span style="font-size:12px;color:var(--green)">✓ Saldado</span>':''}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${g.fecha} · ${g.medio} ${g.categoria?'· '+g.categoria:''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${g.fecha} · ${g.medio}${(()=>{if(g.medio!=='credito')return'';const t=g.tarjeta_id?(db.tarjetas||[]).find(x=>x.id===g.tarjeta_id):null;return t?` <span class="badge" style="background:${t.color||'#6c63ff'}22;color:${t.color||'#6c63ff'}">${t.nombre}</span>`:` <span class="badge" style="background:rgba(255,179,71,0.15);color:var(--warn)">❓ sin tarjeta</span>`;})()} ${g.categoria?'· '+g.categoria:''}</div>
         </div>
         <div style="text-align:right">
           <div style="font-weight:700;font-size:15px">${g.moneda==='USD'?fmtUSD(g.monto):fmtARS(g.monto)}</div>
