@@ -1632,6 +1632,8 @@ async function loadAllData(){
     setLoading(false);
     // Auto-actualizar dólar MEP al cargar (silencioso si falla)
     fetchDolarMEP().catch(()=>{});
+    // Auto-reparar gastos espejo de préstamos que hayan quedado sin crear (ver reconciliarGastosMirrorPrestamos)
+    reconciliarGastosMirrorPrestamos().catch(e=>console.error('Reconciliación de gastos espejo de préstamos falló:',e));
   }catch(err){
     setLoading(false);
     console.error('Error cargando datos:',err);
@@ -4745,6 +4747,27 @@ async function eliminarGastosMirrorPrestamo(cuotas) {
   const { error } = await sb.from('gastos').delete().in('id', gastoIds);
   if (error) { showToast('Error al quitar los gastos vinculados: ' + error.message, 'error'); return; }
   cuotas.forEach(c => { c.gasto_id = null; });
+}
+
+// Red de seguridad: si crearGastosMirrorPrestamo falló (o falló parcialmente) al vincular un
+// préstamo — por ej. por un corte de red — la cuota queda con persona_user_id seteado pero sin
+// gasto espejo, y esa cuota nunca le aparece a la pareja en su propio Gastos. Esto se corre solo
+// en cada carga de datos (ver loadAllData) y detecta/completa cualquier cuota en ese estado, sin
+// depender de que alguien lo note a mano.
+async function reconciliarGastosMirrorPrestamos() {
+  const prestamosVinculados = (db.prestamos || []).filter(p => p.persona_user_id);
+  let reparadas = 0;
+  for (const p of prestamosVinculados) {
+    const cuotasFaltantes = (db.prestamosCuotas || []).filter(c => c.prestamo_id === p.id && !c.gasto_id);
+    if (cuotasFaltantes.length) {
+      await crearGastosMirrorPrestamo(p, cuotasFaltantes, p.persona_user_id);
+      reparadas += cuotasFaltantes.filter(c => c.gasto_id).length;
+    }
+  }
+  if (reparadas > 0) {
+    showToast(`Se sincronizaron ${reparadas} cuota(s) de préstamo pendientes en el Gastos de tu pareja ✓`);
+    renderPrestamos();
+  }
 }
 
 async function addPrestamo() {
