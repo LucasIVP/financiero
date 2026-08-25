@@ -1761,13 +1761,13 @@ function suscripcionActivaEnMes(g, month, year) {
   const mesGasto = new Date(year, month, 1);
   if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
   if (g.fecha_fin_recurrencia) {
-    // fecha_fin_recurrencia puede venir como "YYYY-MM" (ej. desde darDeBajaRecurrente)
-    // o como "YYYY-MM-DD" (ej. desde la separación de serie en saveEditGasto) — soportar ambos.
-    const finStr = g.fecha_fin_recurrencia.length === 7
-      ? g.fecha_fin_recurrencia + '-01'
-      : g.fecha_fin_recurrencia.slice(0, 10);
-    const fin = new Date(finStr + 'T12:00:00');
-    if (mesGasto >= fin) return false;
+    // Comparar como "YYYY-MM" (string) en vez de objetos Date: fecha_fin_recurrencia puede venir
+    // como "YYYY-MM" (ej. desde darDeBajaRecurrente) o "YYYY-MM-DD" (ej. desde saveEditGasto al
+    // separar la serie). Comparar por string evita problemas de horario (Date a las 00:00 vs 12:00
+    // del mismo día 1 hacían que el corte no se aplicara justo en el mes de transición).
+    const mesGastoYM = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const finYM = g.fecha_fin_recurrencia.slice(0, 7);
+    if (mesGastoYM >= finYM) return false;
   }
   if (g.recurrente_activa === false) return false;
   return true;
