@@ -1761,7 +1761,12 @@ function suscripcionActivaEnMes(g, month, year) {
   const mesGasto = new Date(year, month, 1);
   if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
   if (g.fecha_fin_recurrencia) {
-    const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
+    // fecha_fin_recurrencia puede venir como "YYYY-MM" (ej. desde darDeBajaRecurrente)
+    // o como "YYYY-MM-DD" (ej. desde la separación de serie en saveEditGasto) — soportar ambos.
+    const finStr = g.fecha_fin_recurrencia.length === 7
+      ? g.fecha_fin_recurrencia + '-01'
+      : g.fecha_fin_recurrencia.slice(0, 10);
+    const fin = new Date(finStr + 'T12:00:00');
     if (mesGasto >= fin) return false;
   }
   if (g.recurrente_activa === false) return false;
@@ -5242,7 +5247,10 @@ function getRecurrentesPorCostoAcumulado() {
   const hoy = new Date();
   return getTodosRecurrentes().map(g => {
     const inicio = new Date(g.fecha + 'T12:00:00');
-    const fin = g.fecha_fin_recurrencia ? new Date(g.fecha_fin_recurrencia + '-01T12:00:00') : hoy;
+    const finStr = g.fecha_fin_recurrencia
+      ? (g.fecha_fin_recurrencia.length === 7 ? g.fecha_fin_recurrencia + '-01' : g.fecha_fin_recurrencia.slice(0, 10))
+      : null;
+    const fin = finStr ? new Date(finStr + 'T12:00:00') : hoy;
     let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
     if (!g.fecha_fin_recurrencia) meses += 1; // incluye el mes en curso si sigue activo
     meses = Math.max(meses, 1);
