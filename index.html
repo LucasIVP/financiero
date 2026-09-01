@@ -1761,13 +1761,8 @@ function suscripcionActivaEnMes(g, month, year) {
   const mesGasto = new Date(year, month, 1);
   if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
   if (g.fecha_fin_recurrencia) {
-    // Comparar como "YYYY-MM" (string) en vez de objetos Date: fecha_fin_recurrencia puede venir
-    // como "YYYY-MM" (ej. desde darDeBajaRecurrente) o "YYYY-MM-DD" (ej. desde saveEditGasto al
-    // separar la serie). Comparar por string evita problemas de horario (Date a las 00:00 vs 12:00
-    // del mismo día 1 hacían que el corte no se aplicara justo en el mes de transición).
-    const mesGastoYM = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const finYM = g.fecha_fin_recurrencia.slice(0, 7);
-    if (mesGastoYM >= finYM) return false;
+    const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
+    if (mesGasto >= fin) return false;
   }
   if (g.recurrente_activa === false) return false;
   return true;
@@ -4732,17 +4727,19 @@ async function crearGastosMirrorPrestamo(prestamo, cuotas, personaUserId) {
     const descCuota = (prestamo.ncuotas > 1)
       ? `${prestamo.descripcion} (${String(cuota.cuota_num).padStart(2,'0')}/${String(cuota.cuota_total).padStart(2,'0')})`
       : prestamo.descripcion;
-    const { data: gastoData, error: gastoErr } = await sb.from('gastos').insert({
+    const nuevoGastoId = crypto.randomUUID();
+    const { error: gastoErr } = await sb.from('gastos').insert({
+      id: nuevoGastoId,
       user_id: personaUserId, fecha: cuota.fecha, descripcion: descCuota,
       monto: cuota.monto, moneda: cuota.moneda, tipo: 'cuota', medio: 'credito',
       tarjeta_id: prestamo.tarjeta_id || null, es_compartido: false, pagado: cuota.cobrada,
       notas: 'Préstamo de tarjeta de tu pareja — vinculado automáticamente',
       origen_prestamo_cuota_id: cuota.id
-    }).select().single();
+    });
     if (gastoErr) { showToast(`Error al crear el gasto vinculado de "${descCuota}": ${gastoErr.message}`, 'error'); continue; }
-    const { error: updErr } = await sb.from('prestamos_cuotas').update({ gasto_id: gastoData.id }).eq('id', cuota.id);
+    const { error: updErr } = await sb.from('prestamos_cuotas').update({ gasto_id: nuevoGastoId }).eq('id', cuota.id);
     if (updErr) { showToast(`Error al enlazar la cuota: ${updErr.message}`, 'error'); continue; }
-    cuota.gasto_id = gastoData.id;
+    cuota.gasto_id = nuevoGastoId;
   }
 }
 
@@ -5247,10 +5244,7 @@ function getRecurrentesPorCostoAcumulado() {
   const hoy = new Date();
   return getTodosRecurrentes().map(g => {
     const inicio = new Date(g.fecha + 'T12:00:00');
-    const finStr = g.fecha_fin_recurrencia
-      ? (g.fecha_fin_recurrencia.length === 7 ? g.fecha_fin_recurrencia + '-01' : g.fecha_fin_recurrencia.slice(0, 10))
-      : null;
-    const fin = finStr ? new Date(finStr + 'T12:00:00') : hoy;
+    const fin = g.fecha_fin_recurrencia ? new Date(g.fecha_fin_recurrencia + '-01T12:00:00') : hoy;
     let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
     if (!g.fecha_fin_recurrencia) meses += 1; // incluye el mes en curso si sigue activo
     meses = Math.max(meses, 1);
