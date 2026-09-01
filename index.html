@@ -1625,7 +1625,11 @@ async function loadAllData(){
       const defaults={user_id:uid,dolar:1400,dolar_fecha:new Date().toISOString().slice(0,10),obj_ingreso:0,obj_ahorro:20,obj_regular:50,obj_inusual:30};
       await sb.from('config').insert(defaults);db.config=defaults;
     }else{db.config=cfg.data;}
-    if(!cat.data||cat.data.length===0){
+    if(cat.error){
+      console.error('Error cargando categorías:',cat.error);
+      showToast('Error al cargar categorías: '+cat.error.message,'error');
+      db.categorias=[];
+    }else if(!cat.data||cat.data.length===0){
       const defs=defaultCategories().map((c,idx)=>({...c,user_id:uid,orden:idx}));
       await sb.from('categorias').insert(defs);db.categorias=defs;
     }else{db.categorias=cat.data;}
@@ -1761,8 +1765,9 @@ function suscripcionActivaEnMes(g, month, year) {
   const mesGasto = new Date(year, month, 1);
   if (mesGasto < new Date(inicio.getFullYear(), inicio.getMonth(), 1)) return false;
   if (g.fecha_fin_recurrencia) {
-    const fin = new Date(g.fecha_fin_recurrencia + '-01T12:00:00');
-    if (mesGasto >= fin) return false;
+    const fin = new Date(g.fecha_fin_recurrencia + 'T12:00:00');
+    const finMes = new Date(fin.getFullYear(), fin.getMonth(), 1);
+    if (mesGasto >= finMes) return false;
   }
   if (g.recurrente_activa === false) return false;
   return true;
@@ -2190,7 +2195,7 @@ function renderGastos(){
     const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="togglePagado('${g.id}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?'Marcar como pendiente':'Marcar como pagado'}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
-    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}${(g.medio==='credito'&&g.tarjeta_id)?` <span style="font-size:11px;color:var(--accent)">💳 ${(db.tarjetas.find(t=>t.id===g.tarjeta_id)||{}).nombre||'?'}</span>`:''}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -2912,7 +2917,7 @@ function renderHistorial() {
       <td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${(g.desc||g.descripcion||'').includes('(parte grupal')?' <span style="font-size:11px;color:var(--warn)">🤝</span>':''}${pendBadgeH}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}</td>
       <td><span class="tag">${cat.emoji} ${cat.name}</span></td>
       <td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td>
-      <td style="color:var(--muted)">${g.medio}</td>
+      <td style="color:var(--muted)">${g.medio}${(g.medio==='credito'&&g.tarjeta_id)?` <span style="font-size:11px;color:var(--accent)">💳 ${(db.tarjetas.find(t=>t.id===g.tarjeta_id)||{}).nombre||'?'}</span>`:''}</td>
       <td class="amount-negative" style="font-weight:600;white-space:nowrap">${fmtARS(montoEf)}</td>
       <td style="text-align:center">${pagadoCellH}</td>
       <td>${accion}</td>
@@ -5244,7 +5249,7 @@ function getRecurrentesPorCostoAcumulado() {
   const hoy = new Date();
   return getTodosRecurrentes().map(g => {
     const inicio = new Date(g.fecha + 'T12:00:00');
-    const fin = g.fecha_fin_recurrencia ? new Date(g.fecha_fin_recurrencia + '-01T12:00:00') : hoy;
+    const fin = g.fecha_fin_recurrencia ? new Date(g.fecha_fin_recurrencia + 'T12:00:00') : hoy;
     let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
     if (!g.fecha_fin_recurrencia) meses += 1; // incluye el mes en curso si sigue activo
     meses = Math.max(meses, 1);
