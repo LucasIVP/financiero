@@ -2038,6 +2038,7 @@ function clearGastoForm(){
   document.getElementById('g-monto').value='';
   document.getElementById('g-notas').value='';
   document.getElementById('g-medio').value='efectivo';
+  document.getElementById('g-fecha').value=new Date().toISOString().slice(0,10);
   const cb=document.getElementById('g-compartido');if(cb)cb.checked=false;
   const pcb=document.getElementById('g-pagado');if(pcb)pcb.checked=true;
   const aportEl=document.getElementById('g-aporte-pareja');if(aportEl)aportEl.value='';
@@ -2207,7 +2208,7 @@ async function addIngreso(){
   const{error}=await sb.from('ingresos').insert({user_id:currentUser.id,fecha,fuente,monto,moneda,tipo,notas});
   setBtnLoading('btn-add-ingreso',false);
   if(error){showToast(error.message,'error');return;}
-  await refreshTable('ingresos');document.getElementById('i-fuente').value='';document.getElementById('i-monto').value='';renderIngresos();renderDashboard();showToast('Ingreso agregado ✓');
+  await refreshTable('ingresos');document.getElementById('i-fuente').value='';document.getElementById('i-monto').value='';document.getElementById('i-fecha').value=new Date().toISOString().slice(0,10);renderIngresos();renderDashboard();showToast('Ingreso agregado ✓');
 }
 async function deleteIngreso(id){
   const ing = db.ingresos.find(i=>i.id===id);
@@ -4106,6 +4107,7 @@ function removeGGParticipante(idx) {
 function clearGGForm() {
   ggParticipantes = [];
   ['gg-desc','gg-monto','gg-notas','gg-nueva-persona','gg-nuevo-aporte'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('gg-fecha').value = new Date().toISOString().slice(0,10);
   document.getElementById('gg-medio').value = 'efectivo';
   document.getElementById('gg-moneda').value = 'ARS';
   const fields = document.getElementById('gg-cuotas-fields'); if(fields) fields.style.display='none';
