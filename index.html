@@ -3762,7 +3762,13 @@ function renderCompartido() {
     const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
     const parejaAporte = esMio ? (aportePartnerARS ?? 0) : aporteDuenoARS;
     const yoCorresponde = montoARS * propYo;
-    const saldoYo = yoCorresponde - yoAporte; // >0: todavía debo esta parte · <0: mi pareja me debe
+    // Si el gasto ya está marcado como pagado por ambas partes (mismos campos que Mes/Historial/Compartidos
+    // usan para el checkbox de "pagado"), se considera saldado sin importar aporte_pareja — así el balance
+    // en $ refleja lo que la gente realmente tilda como pagado día a día, no solo transferencias registradas
+    // a mano en "Aporte pareja". Excepción: filas virtuales de recurrentes (_virtual) todavía no tienen esos
+    // campos reales, así que siguen el cálculo de siempre.
+    const ambosPagados = !g._virtual && (g.pagado_dueno !== false) && (g.pagado_pareja !== false);
+    const saldoYo = ambosPagados ? 0 : (yoCorresponde - yoAporte); // >0: todavía debo esta parte · <0: mi pareja me debe
     return { g, montoARS, esMio, yoAporte, parejaAporte, saldoYo, tieneAporteCustom: aportePartnerARS != null };
   });
   const balanceNeto = gastosConSaldo.reduce((s, x) => s + x.saldoYo, 0);
@@ -3926,7 +3932,9 @@ function renderTotalDeudaPareja() {
     const aporteDuenoARS = aportePartnerARS != null ? (montoARS - aportePartnerARS) : montoARS;
     const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
     const yoCorresponde = montoARS * propYo;
-    balanceCompartido += (yoCorresponde - yoAporte);
+    // Mismo criterio que la tabla de arriba: si ya está marcado pagado por ambas partes, no suma al total.
+    const ambosPagados = !g._virtual && (g.pagado_dueno !== false) && (g.pagado_pareja !== false);
+    balanceCompartido += ambosPagados ? 0 : (yoCorresponde - yoAporte);
   });
 
   // 2. Gastos grupales vinculados a mi cuenta, pendientes de ESTE mes (mismo criterio que la tabla de arriba:
