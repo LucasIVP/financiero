@@ -4222,6 +4222,44 @@ function renderEditGrupalLista(grupalId) {
     </div>`).join('');
 }
 
+// Crea el/los gasto(s) real(es) en la cuenta de un participante de un gasto grupal ya vinculado
+// a una cuenta real, para que le sume en su propio Gastos — mismo mecanismo que ya existe al
+// crear el gasto grupal (ver addGrupal), pero para cuando el vínculo se hace DESPUÉS
+// (toggleVincularParticipanteEdit) o al agregar un participante ya vinculado a un gasto grupal
+// existente (agregarParticipanteEdit). Sin esto, el vínculo quedaba solo como saldo pendiente en
+// gastos_grupales_participantes y nunca le aparecía a la otra persona en sus Gastos personales.
+// Chequea si ya existe (por descripción) para no duplicar si se vincula/desvincula más de una vez.
+async function crearGastoMirrorParticipanteGrupal(p, g) {
+  if (!p.persona_user_id || !g) return;
+  const nTotal = dbCompartido.grupalesParticipantes.filter(x => x.gasto_grupal_id === g.id).length;
+  const descGasto = `${g.descripcion} (parte grupal — ${nTotal} persona${nTotal !== 1 ? 's' : ''})`;
+  const { data: yaExiste } = await sb.from('gastos').select('id').eq('user_id', p.persona_user_id).ilike('descripcion', `${descGasto}%`).limit(1);
+  if (yaExiste && yaExiste.length > 0) return;
+
+  const notasGasto = g.notas || `Gasto grupal. Total: ${g.moneda === 'USD' ? 'USD $' + g.monto : '$' + Math.round(g.monto).toLocaleString('es-AR')}`;
+  const cuotasExistentes = (dbCompartido.grupalesParticipantesCuotas || []).filter(c => c.participante_id === p.id);
+
+  if (cuotasExistentes.length > 0) {
+    const planIdPersona = generatePlanId();
+    const cuotaRows = [...cuotasExistentes].sort((a, b) => a.cuota_num - b.cuota_num).map(c => ({
+      user_id: p.persona_user_id, fecha: c.fecha,
+      descripcion: `${descGasto} — cuota ${String(c.cuota_num).padStart(2, '0')}/${String(c.cuota_total).padStart(2, '0')}`,
+      monto: c.monto, moneda: c.moneda, cat: g.categoria, tipo: 'inusual', medio: g.medio,
+      notas: notasGasto, cuota_num: c.cuota_num, cuota_total: c.cuota_total,
+      cuota_monto: c.monto, plan_id: planIdPersona, es_compartido: false, pagado: c.pagado
+    }));
+    const { error } = await sb.from('gastos').insert(cuotaRows);
+    if (error) showToast(`Vinculado, pero falló crear el gasto real de ${p.nombre}: ` + error.message, 'error');
+  } else {
+    const { error } = await sb.from('gastos').insert({
+      user_id: p.persona_user_id, fecha: g.fecha, descripcion: descGasto,
+      monto: p.monto_parte, moneda: p.moneda || g.moneda, cat: g.categoria, tipo: 'inusual',
+      medio: g.medio, notas: notasGasto, es_compartido: false, pagado: p.pagado
+    });
+    if (error) showToast(`Vinculado, pero falló crear el gasto real de ${p.nombre}: ` + error.message, 'error');
+  }
+}
+
 async function toggleVincularParticipanteEdit(partId) {
   const p = dbCompartido.grupalesParticipantes.find(x => x.id === partId);
   if (!p) return;
@@ -4231,6 +4269,10 @@ async function toggleVincularParticipanteEdit(partId) {
   const { error } = await sb.from('gastos_grupales_participantes').update({ persona_user_id: nuevoValor }).eq('id', partId);
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   p.persona_user_id = nuevoValor;
+  if (nuevoValor) {
+    const g = dbCompartido.grupales.find(x => x.id === p.gasto_grupal_id);
+    await crearGastoMirrorParticipanteGrupal(p, g);
+  }
   renderEditGrupalLista(p.gasto_grupal_id);
   showToast(nuevoValor ? 'Participante vinculado ✓' : 'Vínculo quitado');
 }
@@ -4310,6 +4352,7 @@ async function agregarParticipanteEdit() {
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
 
   dbCompartido.grupalesParticipantes.push(newP);
+  if (personaUserId) await crearGastoMirrorParticipanteGrupal(newP, g);
   document.getElementById('eg-nueva-persona').value = '';
   const aporteEl = document.getElementById('eg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
   if (vincularEl) vincularEl.checked = false;
