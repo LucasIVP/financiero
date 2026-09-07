@@ -4229,7 +4229,7 @@ function renderEditGrupalLista(grupalId) {
 // existente (agregarParticipanteEdit). Sin esto, el vínculo quedaba solo como saldo pendiente en
 // gastos_grupales_participantes y nunca le aparecía a la otra persona en sus Gastos personales.
 // Chequea si ya existe (por descripción) para no duplicar si se vincula/desvincula más de una vez.
-async function crearGastoMirrorParticipanteGrupal(p, g) {
+async function crearGastoMirrorParticipanteGrupal(p, g, fechaPago) {
   if (!p.persona_user_id || !g) return;
   const nTotal = dbCompartido.grupalesParticipantes.filter(x => x.gasto_grupal_id === g.id).length;
   const descGasto = `${g.descripcion} (parte grupal — ${nTotal} persona${nTotal !== 1 ? 's' : ''})`;
@@ -4251,8 +4251,11 @@ async function crearGastoMirrorParticipanteGrupal(p, g) {
     const { error } = await sb.from('gastos').insert(cuotaRows);
     if (error) showToast(`Vinculado, pero falló crear el gasto real de ${p.nombre}: ` + error.message, 'error');
   } else {
+    // Sin cuotas: el gasto real se fecha cuando esa persona efectivamente lo va a pagar, no
+    // necesariamente el día de la compra original — pueden pasar meses entre que se compra algo
+    // grupal y que alguien se vincula/paga su parte (ver caso real "Delantal Gordis", 07/09).
     const { error } = await sb.from('gastos').insert({
-      user_id: p.persona_user_id, fecha: g.fecha, descripcion: descGasto,
+      user_id: p.persona_user_id, fecha: fechaPago || g.fecha, descripcion: descGasto,
       monto: p.monto_parte, moneda: p.moneda || g.moneda, cat: g.categoria, tipo: 'inusual',
       medio: g.medio, notas: notasGasto, es_compartido: false, pagado: p.pagado
     });
@@ -4271,7 +4274,15 @@ async function toggleVincularParticipanteEdit(partId) {
   p.persona_user_id = nuevoValor;
   if (nuevoValor) {
     const g = dbCompartido.grupales.find(x => x.id === p.gasto_grupal_id);
-    await crearGastoMirrorParticipanteGrupal(p, g);
+    const tieneCuotas = (dbCompartido.grupalesParticipantesCuotas || []).some(c => c.participante_id === p.id);
+    let fechaPago = null;
+    if (g && !tieneCuotas) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      // Nota: prompt nativo del navegador (no un modal propio de la app) — pide cuándo le va
+      // a aparecer el gasto a esta persona, porque no siempre coincide con la fecha de la compra.
+      fechaPago = prompt(`¿En qué fecha le va a aparecer este gasto a ${p.nombre}? (AAAA-MM-DD)`, hoy) || hoy;
+    }
+    await crearGastoMirrorParticipanteGrupal(p, g, fechaPago);
   }
   renderEditGrupalLista(p.gasto_grupal_id);
   showToast(nuevoValor ? 'Participante vinculado ✓' : 'Vínculo quitado');
@@ -4319,6 +4330,39 @@ async function toggleCuotaParticipante(cuotaId) {
   showToast(nuevoPagado ? 'Cuota marcada como pagada ✓' : 'Cuota marcada como pendiente');
 }
 
+// Cuando cambia la cantidad de personas de un gasto grupal ya creado, monto_parte de los
+// participantes existentes se recalcula — pero si alguno ya tiene su gasto real creado en su
+// propia cuenta (persona_user_id), ese gasto quedaba con el monto del reparto viejo (bug real
+// encontrado el 07/09 en "Delantal Gordis": reparto viejo a 3 quedó fijo en $16.975,67 mientras
+// el reparto pasó a $12.731,75 a 4 personas). Actualiza el/los gasto(s) real(es) ya creados para
+// que reflejen el nuevo reparto. Si paga en cuotas, solo toca las cuotas no pagadas — no reescribe
+// cuotas que la otra persona ya pagó.
+async function actualizarMontoMirrorParticipanteGrupal(p, g, nAntes, nNuevo) {
+  if (!p.persona_user_id) return;
+  const descViejo = `${g.descripcion} (parte grupal — ${nAntes} persona${nAntes !== 1 ? 's' : ''})`;
+  const descNuevo = `${g.descripcion} (parte grupal — ${nNuevo} persona${nNuevo !== 1 ? 's' : ''})`;
+  const cuotasExistentes = (dbCompartido.grupalesParticipantesCuotas || []).filter(c => c.participante_id === p.id);
+
+  if (cuotasExistentes.length > 0) {
+    const cuotaTotal = cuotasExistentes[0].cuota_total;
+    const cuotaMontoNuevo = Math.round((p.monto_parte / cuotaTotal) * 100) / 100;
+    for (const c of cuotasExistentes) {
+      if (c.pagado) continue; // no reescribir cuotas que ya pagó
+      await sb.from('gastos_grupales_participantes_cuotas').update({ monto: cuotaMontoNuevo }).eq('id', c.id);
+      c.monto = cuotaMontoNuevo;
+      const descCuotaVieja = `${descViejo} — cuota ${String(c.cuota_num).padStart(2, '0')}/${String(c.cuota_total).padStart(2, '0')}`;
+      const descCuotaNueva = `${descNuevo} — cuota ${String(c.cuota_num).padStart(2, '0')}/${String(c.cuota_total).padStart(2, '0')}`;
+      const { error } = await sb.from('gastos').update({ monto: cuotaMontoNuevo, cuota_monto: cuotaMontoNuevo, descripcion: descCuotaNueva })
+        .eq('user_id', p.persona_user_id).eq('descripcion', descCuotaVieja);
+      if (error) showToast(`No se pudo actualizar el gasto real de ${p.nombre}: ` + error.message, 'error');
+    }
+  } else {
+    const { error } = await sb.from('gastos').update({ monto: p.monto_parte, descripcion: descNuevo })
+      .eq('user_id', p.persona_user_id).eq('descripcion', descViejo);
+    if (error) showToast(`No se pudo actualizar el gasto real de ${p.nombre}: ` + error.message, 'error');
+  }
+}
+
 async function agregarParticipanteEdit() {
   const grupalId = document.getElementById('eg-grupal-id').value;
   const nombre = document.getElementById('eg-nueva-persona').value.trim();
@@ -4336,7 +4380,8 @@ async function agregarParticipanteEdit() {
   }
 
   // Recalcular parte con nuevo total
-  const nNuevo = partsActuales.length + 1;
+  const nAntes = partsActuales.length;
+  const nNuevo = nAntes + 1;
   const parteMonto = Math.round(g.monto / nNuevo * 100) / 100;
 
   // Update existing participants' monto_parte
@@ -4344,6 +4389,10 @@ async function agregarParticipanteEdit() {
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
   ));
   partsActuales.forEach(p => p.monto_parte = parteMonto);
+  // Si alguno de los que ya estaban ya tiene su gasto real creado (vinculado), actualizarlo con el nuevo monto
+  for (const p of partsActuales.filter(x => x.persona_user_id)) {
+    await actualizarMontoMirrorParticipanteGrupal(p, g, nAntes, nNuevo);
+  }
 
   // Insert new participant
   const { data: newP, error } = await sb.from('gastos_grupales_participantes')
@@ -4352,7 +4401,11 @@ async function agregarParticipanteEdit() {
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
 
   dbCompartido.grupalesParticipantes.push(newP);
-  if (personaUserId) await crearGastoMirrorParticipanteGrupal(newP, g);
+  if (personaUserId) {
+    const hoyNuevo = new Date().toISOString().slice(0, 10);
+    const fechaPagoNuevo = prompt(`¿En qué fecha le va a aparecer este gasto a ${nombre}? (AAAA-MM-DD)`, hoyNuevo) || hoyNuevo;
+    await crearGastoMirrorParticipanteGrupal(newP, g, fechaPagoNuevo);
+  }
   document.getElementById('eg-nueva-persona').value = '';
   const aporteEl = document.getElementById('eg-nuevo-aporte'); if (aporteEl) aporteEl.value = '';
   if (vincularEl) vincularEl.checked = false;
@@ -4374,12 +4427,17 @@ async function quitarParticipanteEdit(partId, grupalId) {
   dbCompartido.grupalesParticipantesCuotas = dbCompartido.grupalesParticipantesCuotas.filter(c => c.participante_id !== partId);
 
   // Recalcular partes
+  const nAntes = partsActuales.length + 1; // +1 porque partsActuales ya excluye al que se quitó
   const nNuevo = partsActuales.length;
   const parteMonto = Math.round(g.monto / nNuevo * 100) / 100;
   await Promise.all(partsActuales.map(p =>
     sb.from('gastos_grupales_participantes').update({ monto_parte: parteMonto }).eq('id', p.id)
   ));
   partsActuales.forEach(p => p.monto_parte = parteMonto);
+  // Igual que al agregar: si alguno ya tiene su gasto real creado (vinculado), actualizarlo
+  for (const p of partsActuales.filter(x => x.persona_user_id)) {
+    await actualizarMontoMirrorParticipanteGrupal(p, g, nAntes, nNuevo);
+  }
 
   renderEditGrupalLista(grupalId);
   renderGrupales();
