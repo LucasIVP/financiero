@@ -2074,7 +2074,20 @@ async function deleteGasto(id){
   confirmarEliminar(nombre, 'Se eliminará este registro. Esta acción no se puede deshacer.', async () => {
     const{error}=await sb.from('gastos').delete().eq('id',id);
     if(error){showToast(error.message,'error');return;}
-    db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();renderSuscripciones();showToast('Eliminado');
+    // Si este gasto es el espejo de una cuota de préstamo de tarjeta vinculada a la pareja, borrar
+    // también esa cuota: si no, reconciliarGastosMirrorPrestamos() la detecta como "sincronización
+    // pendiente" en la próxima carga y vuelve a crear este mismo gasto en la cuenta de la pareja.
+    if(gasto.origen_prestamo_cuota_id){
+      const{error:cuotaErr}=await sb.from('prestamos_cuotas').delete().eq('id',gasto.origen_prestamo_cuota_id);
+      if(cuotaErr){
+        showToast('Gasto borrado, pero no se pudo borrar la cuota del préstamo vinculada: '+cuotaErr.message,'error');
+      }else{
+        db.prestamosCuotas=(db.prestamosCuotas||[]).filter(c=>c.id!==gasto.origen_prestamo_cuota_id);
+      }
+    }
+    db.gastos=db.gastos.filter(g=>g.id!==id);renderGastos();renderDashboard();renderSuscripciones();
+    if(typeof renderPrestamos==='function')renderPrestamos();
+    showToast('Eliminado');
   });
 }
 async function confirmDeletePlan(mode){
