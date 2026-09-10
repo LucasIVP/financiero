@@ -3714,12 +3714,19 @@ function getGrupalesVincMes(month, year) {
         });
       });
     } else {
-      const d = gg?.fecha ? new Date(gg.fecha + 'T12:00:00') : null;
+      // Ojo: filtrar por la fecha de LA COMPRA ORIGINAL (gg.fecha) es un bug — puede pasar que
+      // alguien se vincule/tenga que pagar meses después de la compra (ver fecha_pago en
+      // crearGastoMirrorParticipanteGrupal), y con gg.fecha el pendiente "desaparecía" de este
+      // listado en cuanto pasaba el mes de la compra, aunque siguiera sin pagarse. Usamos
+      // fecha_pago (la fecha real en la que le corresponde pagarlo) y sólo si no está seteada
+      // (participantes vinculados antes de este fix) caemos a gg.fecha como antes.
+      const fechaRef = p.fecha_pago || gg?.fecha;
+      const d = fechaRef ? new Date(fechaRef + 'T12:00:00') : null;
       if (!d || d.getMonth() !== month || d.getFullYear() !== year) return;
       const saldoNativo = Math.max(0, (p.monto_parte || 0) - (p.monto_aportado || 0));
       if (saldoNativo <= 0) return;
       out.push({
-        id: p.id, fecha: gg?.fecha || '', descripcion: gg?.descripcion || '(gasto grupal)',
+        id: p.id, fecha: fechaRef || '', descripcion: gg?.descripcion || '(gasto grupal)',
         categoria: gg?.categoria || '', moneda: p.moneda, montoParte: p.monto_parte || 0,
         saldoNativo, saldoYo: toARS(saldoNativo, p.moneda)
       });
@@ -3749,12 +3756,15 @@ function getGrupalesCreadosPendMes(month, year) {
         });
       });
     } else {
-      const d = gg?.fecha ? new Date(gg.fecha + 'T12:00:00') : null;
+      // Mismo fix que en getGrupalesVincMes: usar fecha_pago (cuándo le corresponde pagarlo a
+      // esa persona) en vez de la fecha de la compra original, si está disponible.
+      const fechaRef = p.fecha_pago || gg?.fecha;
+      const d = fechaRef ? new Date(fechaRef + 'T12:00:00') : null;
       if (!d || d.getMonth() !== month || d.getFullYear() !== year) return;
       const saldoNativo = Math.max(0, (p.monto_parte || 0) - (p.monto_aportado || 0));
       if (saldoNativo <= 0) return;
       out.push({
-        id: p.id, fecha: gg?.fecha || '', descripcion: gg?.descripcion || '(gasto grupal)',
+        id: p.id, fecha: fechaRef || '', descripcion: gg?.descripcion || '(gasto grupal)',
         categoria: gg?.categoria || '', moneda: p.moneda, montoParte: p.monto_parte || 0,
         saldoNativo, saldoYo: toARS(saldoNativo, p.moneda)
       });
@@ -4416,13 +4426,22 @@ async function crearGastoMirrorParticipanteGrupal(p, g, fechaPago) {
   } else {
     // Sin cuotas: el gasto real se fecha cuando esa persona efectivamente lo va a pagar, no
     // necesariamente el día de la compra original — pueden pasar meses entre que se compra algo
-    // grupal y que alguien se vincula/paga su parte (ver caso real "Delantal Gordis", 07/09).
+    // grupal y que alguien se vincula/paga su parte (caso real "Delantal Gordis": compra 07/08,
+    // vínculo recién 07/09). Guardamos esa misma fecha en fecha_pago del participante para que
+    // getGrupalesVincMes/getGrupalesCreadosPendMes sepan en qué mes mostrar el pendiente — si
+    // usaran la fecha de la compra original, el pendiente "desaparecía" del mes en que realmente
+    // hay que cobrarlo/pagarlo apenas cambiaba el calendario, aunque seguía intacto como gasto
+    // personal de esa persona.
+    const fechaReal = fechaPago || g.fecha;
     const { error } = await sb.from('gastos').insert({
-      user_id: p.persona_user_id, fecha: fechaPago || g.fecha, descripcion: descGasto,
+      user_id: p.persona_user_id, fecha: fechaReal, descripcion: descGasto,
       monto: p.monto_parte, moneda: p.moneda || g.moneda, cat: g.categoria, tipo: 'inusual',
       medio: g.medio, notas: notasGasto, es_compartido: false, pagado: p.pagado
     });
-    if (error) showToast(`Vinculado, pero falló crear el gasto real de ${p.nombre}: ` + error.message, 'error');
+    if (error) { showToast(`Vinculado, pero falló crear el gasto real de ${p.nombre}: ` + error.message, 'error'); return; }
+    const { error: errFechaPago } = await sb.from('gastos_grupales_participantes').update({ fecha_pago: fechaReal }).eq('id', p.id);
+    if (errFechaPago) showToast(`Gasto real creado, pero falló guardar la fecha de pago: ` + errFechaPago.message, 'error');
+    else p.fecha_pago = fechaReal;
   }
 }
 
