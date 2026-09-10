@@ -1324,6 +1324,13 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-desglose-deuda">
+  <div class="modal" style="width:min(720px,95vw)">
+    <div class="modal-header"><span class="modal-title">🔍 Detalle del total Compartido</span><button class="modal-close" onclick="closeModal('modal-desglose-deuda')">×</button></div>
+    <div id="desglose-deuda-body"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-edit-grupal">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">✏️ Editar gasto grupal</span><button class="modal-close" onclick="closeModal('modal-edit-grupal')">×</button></div>
@@ -3977,12 +3984,119 @@ function renderTotalDeudaPareja() {
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
       <div>
         <div style="font-weight:700;font-size:15px">💰 Total que le debés a tu pareja</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Gastos compartidos, gastos grupales y cuotas de préstamos de tarjeta pendientes de este mes</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Gastos compartidos, gastos grupales y cuotas de préstamos de tarjeta pendientes de este mes · <span style="text-decoration:underline;cursor:pointer" onclick="mostrarDesgloseDeuda()" title="Ver de qué gastos sale este número">🔍 ver detalle</span></div>
       </div>
-      <div style="font-weight:800;font-size:24px;color:${saldado ? 'var(--green)' : 'var(--warn)'}">${saldado ? 'Saldado ✓' : fmtARS(totalLeDebo)}</div>
+      <div style="font-weight:800;font-size:24px;color:${saldado ? 'var(--green)' : 'var(--warn)'};cursor:pointer" onclick="mostrarDesgloseDeuda()" title="Ver de qué gastos sale este número">${saldado ? 'Saldado ✓' : fmtARS(totalLeDebo)}</div>
     </div>
-    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (gastos compartidos, gastos grupales y cuotas de préstamos de tarjeta pendientes de este mes): <strong style="color:var(--green)">${fmtARS(totalMeDebe)}</strong></div>` : ''}
+    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (gastos compartidos, gastos grupales y cuotas de préstamos de tarjeta pendientes de este mes): <strong style="color:var(--green);cursor:pointer;text-decoration:underline" onclick="mostrarDesgloseDeuda()" title="Ver de qué gastos sale este número">${fmtARS(totalMeDebe)}</strong></div>` : ''}
   </div>`;
+}
+
+// Desglose ítem por ítem de renderTotalDeudaPareja: mismas 3 fuentes (gastos compartidos, gastos
+// grupales, préstamos de tarjeta vinculados), pero mostrando cada gasto individual en vez de solo el
+// total, para poder corroborar de dónde sale el número que se muestra arriba. Reproduce exactamente
+// la misma lógica (incluido el clamp a 0 por fuente) así los subtotales cierran con lo que se ve en pantalla.
+function mostrarDesgloseDeuda() {
+  const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
+  const { propYo } = calcProporcionMes(month, year);
+
+  // Fuente 1: gastos compartidos del mes (mismo criterio que renderCompartido/renderTotalDeudaPareja)
+  const gastosRealesBD = (dbCompartido.gastos || []).filter(g => {
+    const d = new Date(g.fecha + 'T12:00:00');
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+  const idsRealesBD = new Set(gastosRealesBD.map(g => g.id));
+  const planIdsRealesBD = new Set(gastosRealesBD.filter(g => g.plan_id).map(g => g.plan_id));
+  const virtualesCompartidos = getGastosConSuscripciones(month, year)
+    .filter(g => g._virtual && g.es_compartido && !idsRealesBD.has(g.id) && (!g.plan_id || !planIdsRealesBD.has(g.plan_id)));
+  const gastosMes = [...gastosRealesBD, ...virtualesCompartidos];
+
+  const itemsCompartidos = [];
+  gastosMes.forEach(g => {
+    const montoARS = toARS(g.monto, g.moneda);
+    const esMio = g.user_id === currentUser.id;
+    const aportePartnerARS = (g.aporte_pareja != null) ? toARS(g.aporte_pareja, g.moneda) : null;
+    const aporteDuenoARS = aportePartnerARS != null ? (montoARS - aportePartnerARS) : montoARS;
+    const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
+    const yoCorresponde = montoARS * propYo;
+    const ambosPagados = !g._virtual && (g.pagado_dueno !== false) && (g.pagado_pareja !== false);
+    const saldoYo = ambosPagados ? 0 : (yoCorresponde - yoAporte);
+    if (Math.abs(saldoYo) < 1) return; // saldado, no suma
+    itemsCompartidos.push({ fecha: g.fecha, descripcion: g.desc || g.descripcion, saldoYo });
+  });
+
+  // Fuente 2: gastos grupales — vinculados a mi cuenta (yo debo) + creados por mí (ella me debe)
+  const itemsGrupales = [
+    ...getGrupalesVincMes(month, year).map(f => ({ fecha: f.fecha, descripcion: f.descripcion, saldoYo: f.saldoYo })),
+    ...getGrupalesCreadosPendMes(month, year).map(f => ({ fecha: f.fecha, descripcion: f.descripcion, saldoYo: -f.saldoYo }))
+  ];
+
+  // Fuente 3: préstamos de tarjeta — vinculados a mi cuenta (yo debo) + que yo creé para mi pareja (ella me debe)
+  const otherUserId = miParejaActual()?.partnerId || null;
+  const misPrestamosVincIds = new Set((db.prestamos || []).filter(p => p.persona_user_id === otherUserId).map(p => p.id));
+  const itemsPrestamos = [
+    ...(db.prestamosCuotasVinculadas || [])
+      .filter(c => {
+        if (c.cobrada) return false;
+        const d = new Date(c.fecha + 'T12:00:00');
+        return d.getMonth() === month && d.getFullYear() === year;
+      })
+      .map(c => {
+        const prestamo = (db.prestamosVinculados || []).find(p => p.id === c.prestamo_id);
+        const nombre = (prestamo?.descripcion || '(préstamo)') + (c.cuota_total > 1 ? ` — cuota ${String(c.cuota_num).padStart(2,'0')}/${String(c.cuota_total).padStart(2,'0')}` : '');
+        return { fecha: c.fecha, descripcion: nombre, saldoYo: toARS(c.monto, c.moneda) };
+      }),
+    ...(db.prestamosCuotas || [])
+      .filter(c => {
+        if (c.cobrada || !misPrestamosVincIds.has(c.prestamo_id)) return false;
+        const d = new Date(c.fecha + 'T12:00:00');
+        return d.getMonth() === month && d.getFullYear() === year;
+      })
+      .map(c => {
+        const prestamo = (db.prestamos || []).find(p => p.id === c.prestamo_id);
+        const nombre = (prestamo?.descripcion || '(préstamo)') + (c.cuota_total > 1 ? ` — cuota ${String(c.cuota_num).padStart(2,'0')}/${String(c.cuota_total).padStart(2,'0')}` : '');
+        return { fecha: c.fecha, descripcion: nombre, saldoYo: -toARS(c.monto, c.moneda) };
+      })
+  ];
+
+  const secciones = [
+    { titulo: '1️⃣ Gastos compartidos', items: itemsCompartidos },
+    { titulo: '2️⃣ Gastos grupales', items: itemsGrupales },
+    { titulo: '3️⃣ Préstamos de tarjeta', items: itemsPrestamos }
+  ];
+
+  let totalLeDeboFinal = 0, totalMeDebenFinal = 0;
+  const fmtFila = x => `<tr>
+      <td style="color:var(--muted);white-space:nowrap;font-size:12px">${x.fecha || '—'}</td>
+      <td style="font-size:13px">${x.descripcion}</td>
+      <td style="text-align:right;white-space:nowrap;font-size:13px;font-weight:600;color:${x.saldoYo > 0 ? 'var(--warn)' : 'var(--green)'}">${x.saldoYo > 0 ? 'Le debés' : 'Te debe'} ${fmtARS(Math.abs(x.saldoYo))}</td>
+    </tr>`;
+
+  const seccionesHTML = secciones.map(sec => {
+    const neto = sec.items.reduce((s, x) => s + x.saldoYo, 0);
+    const leDebo = Math.max(0, neto);
+    const meDeben = Math.max(0, -neto);
+    totalLeDeboFinal += leDebo;
+    totalMeDebenFinal += meDeben;
+    return `<div style="margin-bottom:18px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px">${sec.titulo}</div>
+      ${sec.items.length === 0 ? '<div style="font-size:12px;color:var(--muted);padding-left:2px">Nada pendiente este mes.</div>' : `
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th style="text-align:right">Monto</th></tr></thead>
+      <tbody>${sec.items.map(fmtFila).join('')}</tbody></table></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;padding-left:2px">Subtotal de esta fuente → Le debés: <strong>${fmtARS(leDebo)}</strong> · Te debe: <strong>${fmtARS(meDeben)}</strong></div>`}
+    </div>`;
+  }).join('');
+
+  const body = document.getElementById('desglose-deuda-body');
+  body.innerHTML = seccionesHTML + `
+    <div style="margin-top:6px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px">
+        <div><strong style="color:var(--warn)">Total que le debés: ${fmtARS(totalLeDeboFinal)}</strong></div>
+        <div><strong style="color:var(--green)">Total que te debe: ${fmtARS(totalMeDebenFinal)}</strong></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">Estos dos números tienen que coincidir exactamente con los que se ven en el panel "💰 Total que le debés a tu pareja". Si no coinciden, avisá — hay un desfasaje entre este desglose y el cálculo de arriba.</div>
+    </div>`;
+  openModal('modal-desglose-deuda');
 }
 
 // VAQUITA
