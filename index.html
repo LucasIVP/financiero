@@ -1786,10 +1786,15 @@ function getGastosConSuscripciones(month, year) {
   const reales = filterByMonth(db.gastos, month, year);
   const planIdsReales = new Set(reales.filter(g => g.plan_id && g.recurrente).map(g => g.plan_id));
   const idsReales = new Set(reales.filter(g => !g.plan_id && g.recurrente).map(g => g.id));
+  // Masters recurrentes que ya tienen su instancia "materializada" (fila real propia) para este mes
+  // — se generó al tildar/destildar pagado sobre la fila virtual (ver materializarRecurrente). No hay
+  // que volver a proyectar la virtual en ese caso.
+  const mastersMaterializados = new Set(reales.filter(g => g.recurrente_master_id).map(g => g.recurrente_master_id));
   // Todos los recurrentes activos sin entrada real este mes
   const virtuales = getTodosRecurrentes()
     .filter(g => {
       if (!suscripcionActivaEnMes(g, month, year)) return false;
+      if (mastersMaterializados.has(g.id)) return false;
       if (g.plan_id) return !planIdsReales.has(g.plan_id);
       return !idsReales.has(g.id);
     })
@@ -2022,7 +2027,7 @@ async function addGasto(){
       const fechaCuota=`${y}-${String(m+1).padStart(2,'0')}-01`;
       const esCompartido=document.getElementById('g-compartido').checked;
       const tarjetaId=document.getElementById('g-tarjeta-id')?.value||null;
-      rows.push({user_id:currentUser.id,fecha:fechaCuota,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado});
+      rows.push({user_id:currentUser.id,fecha:fechaCuota,fecha_compra:fecha,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esCompartido,tarjeta_id:tarjetaId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado});
     }
     const{error}=await sb.from('gastos').insert(rows);
     setBtnLoading('btn-add-gasto',false);
@@ -2112,14 +2117,43 @@ async function confirmDeletePlan(mode){
     renderGastos();renderDashboard();renderTarjetas();showToast('Cuota eliminada');
   }
 }
-async function togglePagado(id, checked){
-  const gasto=db.gastos.find(g=>g.id===id);
-  const gastoComp=dbCompartido?.gastos?.find(g=>g.id===id);
+// Genera la fila real de UN mes concreto de un gasto recurrente (a partir de la fila "master",
+// recurrente=true), la primera vez que alguien tilda/destilda su pago desde una fila virtual.
+// Así cada mes queda con su propio pagado/pagado_dueno/pagado_pareja independiente, en vez de que
+// el toggle le pegue directo a la fila master (lo que antes hacía que tildar/destildar el pago de
+// un mes afectara — "por arte de magia" — el estado de otros meses ya cerrados).
+async function materializarRecurrente(masterId, fechaVirtual) {
+  const master = db.gastos.find(g => g.id === masterId);
+  if (!master) { showToast('No se encontró el gasto recurrente original', 'error'); return null; }
+  const nuevaFila = {
+    user_id: master.user_id, fecha: fechaVirtual, descripcion: master.descripcion,
+    monto: master.monto, moneda: master.moneda, cat: master.cat, tipo: master.tipo,
+    medio: master.medio, notas: master.notas, es_compartido: !!master.es_compartido,
+    subcat_id: master.subcat_id || null, tarjeta_id: master.tarjeta_id || null,
+    aporte_pareja: master.aporte_pareja ?? null,
+    pagado: true, pagado_dueno: true, pagado_pareja: true,
+    recurrente: false, recurrente_master_id: masterId
+  };
+  const { data, error } = await sb.from('gastos').insert(nuevaFila).select().single();
+  if (error) { showToast('Error al generar el gasto del mes: ' + error.message, 'error'); return null; }
+  await refreshGastosCompleto();
+  if (data.es_compartido) await loadCompartido();
+  return data.id;
+}
+
+async function togglePagado(id, checked, virtualFecha){
+  let realId = id;
+  if (virtualFecha) {
+    realId = await materializarRecurrente(id, virtualFecha);
+    if (!realId) return;
+  }
+  const gasto=db.gastos.find(g=>g.id===realId);
+  const gastoComp=dbCompartido?.gastos?.find(g=>g.id===realId);
   if(!gasto && !gastoComp)return;
   const prev=gasto?gasto.pagado:gastoComp.pagado;
   if(gasto)gasto.pagado=checked; // optimista
   if(gastoComp)gastoComp.pagado=checked;
-  const{error}=await sb.from('gastos').update({pagado:checked}).eq('id',id);
+  const{error}=await sb.from('gastos').update({pagado:checked}).eq('id',realId);
   if(error){
     if(gasto)gasto.pagado=prev;
     if(gastoComp)gastoComp.pagado=prev;
@@ -2142,11 +2176,16 @@ async function togglePagado(id, checked){
 // su propia parte de forma independiente. El campo agregado "pagado" (usado en Dashboard/
 // Historial para los totales) se mantiene sincronizado: solo queda true cuando AMBAS partes
 // están pagadas, igual que antes se comportaba para gastos no compartidos.
-async function togglePagadoParte(id, quien, checked) {
+async function togglePagadoParte(id, quien, checked, virtualFecha) {
+  let realId = id;
+  if (virtualFecha) {
+    realId = await materializarRecurrente(id, virtualFecha);
+    if (!realId) return;
+  }
   const campo = quien === 'dueno' ? 'pagado_dueno' : 'pagado_pareja';
   const otroCampo = quien === 'dueno' ? 'pagado_pareja' : 'pagado_dueno';
-  const gasto = db.gastos.find(g => g.id === id);
-  const gastoComp = dbCompartido?.gastos?.find(g => g.id === id);
+  const gasto = db.gastos.find(g => g.id === realId);
+  const gastoComp = dbCompartido?.gastos?.find(g => g.id === realId);
   if (!gasto && !gastoComp) return;
   const ref = gasto || gastoComp;
   const prevCampo = ref[campo];
@@ -2155,7 +2194,7 @@ async function togglePagadoParte(id, quien, checked) {
   const nuevoPagado = checked && otroValor;
   if (gasto) { gasto[campo] = checked; gasto.pagado = nuevoPagado; }
   if (gastoComp) { gastoComp[campo] = checked; gastoComp.pagado = nuevoPagado; }
-  const { error } = await sb.from('gastos').update({ [campo]: checked, pagado: nuevoPagado }).eq('id', id);
+  const { error } = await sb.from('gastos').update({ [campo]: checked, pagado: nuevoPagado }).eq('id', realId);
   if (error) {
     if (gasto) { gasto[campo] = prevCampo; gasto.pagado = prevPagado; }
     if (gastoComp) { gastoComp[campo] = prevCampo; gastoComp.pagado = prevPagado; }
@@ -2216,9 +2255,9 @@ function renderGastos(){
     const estaPagado=esCompMi?(g[`pagado_${miQuienMes}`]!==false):(g.pagado!==false);
     const pendBadge=estaPagado?'':` <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>`;
     const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
-      ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="${esCompMi?`togglePagadoParte('${g.id}','${miQuienMes}',this.checked)`:`togglePagado('${g.id}', this.checked)`}" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?(esCompMi?'Marcar tu parte como pendiente':'Marcar como pendiente'):(esCompMi?'Marcar tu parte como pagada':'Marcar como pagado')}">`
+      ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="${esCompMi?`togglePagadoParte('${g.id}','${miQuienMes}',this.checked${g._virtual?`,'${g.fecha}'`:''})`:`togglePagado('${g.id}', this.checked${g._virtual?`, '${g.fecha}'`:''})`}" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?(esCompMi?'Marcar tu parte como pendiente':'Marcar como pendiente'):(esCompMi?'Marcar tu parte como pagada':'Marcar como pagado')}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
-    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}${(g.medio==='credito'&&g.tarjeta_id)?` <span style="font-size:11px;color:var(--accent)">💳 ${(db.tarjetas.find(t=>t.id===g.tarjeta_id)||{}).nombre||'?'}</span>`:''}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}${g.fecha_compra&&g.fecha_compra!==g.fecha?` · comprado el ${g.fecha_compra}`:''}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}${(g.medio==='credito'&&g.tarjeta_id)?` <span style="font-size:11px;color:var(--accent)">💳 ${(db.tarjetas.find(t=>t.id===g.tarjeta_id)||{}).nombre||'?'}</span>`:''}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
@@ -2929,7 +2968,7 @@ function renderHistorial() {
     const esCreditoSinPlan = g.medio === 'credito' && !g.plan_id;
     const accion = esCreditoSinPlan
       ? `<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="abrirConvertirTC('${g.id}')">✏️ Cuotas</button>`
-      : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</span>` : `<button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`);
+      : (g.cuota_num ? `<span style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}${g.fecha_compra&&g.fecha_compra!==g.fecha?`<br>comprado el ${g.fecha_compra}`:''}</span>` : `<button class="del-btn" onclick="deleteGasto('${g.id}')">🗑</button>`);
     const esCompH=g.es_compartido===true;
     const miQuienHist=g.user_id===currentUser.id?'dueno':'pareja';
     const estaPagadoH=esCompH?(g[`pagado_${miQuienHist}`]!==false):(g.pagado!==false);
@@ -3022,6 +3061,7 @@ async function convertirTC() {
     rows.push({
       user_id: currentUser.id,
       fecha: fechaCuota,
+      fecha_compra: g.fecha_compra || g.fecha,
       descripcion: `${g.desc||g.descripcion} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,
       monto: cuotaMonto, moneda: g.moneda, cat: g.cat, tipo: g.tipo,
       medio: 'credito', notas: g.notas,
@@ -3852,18 +3892,15 @@ function renderCompartido() {
       const parejaPagadoParte = g[`pagado_${suQuien}`] !== false;
       const estaPagado = yoPagadoParte && parejaPagadoParte;
       // Todo lo que aparece acá es es_compartido=true, así que cualquiera de los dos puede tildar/destildar
-      // su propia parte (la política RLS de gastos_update ya lo permite). Excepción: filas virtuales de
-      // recurrentes todavía no tienen fila real en gastos, así que no se pueden togglear hasta el mes en que se generen.
-      const chkMi = g._virtual
-        ? `<span style="font-size:11px;color:var(--muted)" title="Todavía no se generó la fila real de este mes">—</span>`
-        : `<input type="checkbox" ${yoPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${miQuien}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent)" title="${yoPagadoParte ? 'Marcar tu parte como pendiente' : 'Marcar tu parte como pagada'}">`;
-      const chkSu = g._virtual
-        ? `<span style="font-size:11px;color:var(--muted)" title="Todavía no se generó la fila real de este mes">—</span>`
-        : `<input type="checkbox" ${parejaPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${suQuien}', this.checked)" style="width:16px;height:16px;accent-color:var(--accent2)" title="${parejaPagadoParte ? 'Marcar la parte de tu pareja como pendiente' : 'Marcar la parte de tu pareja como pagada'}">`;
+      // su propia parte (la política RLS de gastos_update ya lo permite). Si la fila todavía es virtual
+      // (recurrente proyectado, sin fila real este mes), el toggle la materializa primero — ver
+      // materializarRecurrente — así cada mes queda con su propio estado de pago independiente.
+      const chkMi = `<input type="checkbox" ${yoPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${miQuien}', this.checked${g._virtual ? `, '${g.fecha}'` : ''})" style="width:16px;height:16px;accent-color:var(--accent)" title="${yoPagadoParte ? 'Marcar tu parte como pendiente' : 'Marcar tu parte como pagada'}">`;
+      const chkSu = `<input type="checkbox" ${parejaPagadoParte ? 'checked' : ''} onchange="togglePagadoParte('${g.id}', '${suQuien}', this.checked${g._virtual ? `, '${g.fecha}'` : ''})" style="width:16px;height:16px;accent-color:var(--accent2)" title="${parejaPagadoParte ? 'Marcar la parte de tu pareja como pendiente' : 'Marcar la parte de tu pareja como pagada'}">`;
       return `<tr style="${estaPagado ? '' : 'opacity:0.85'}">
         <td style="text-align:center"><input type="checkbox" ${compSeleccionados.has(g.id) ? 'checked' : ''} onchange="toggleCompSeleccion('${g.id}', this.checked)" style="width:15px;height:15px;accent-color:var(--accent2)" title="Sumar este ítem al total seleccionado"></td>
         <td style="color:var(--muted)">${g.fecha}</td>
-        <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}${!estaPagado ? ' <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}</div>` : ''}</td>
+        <td><div style="font-weight:500">${g.desc || g.descripcion}${tieneAporteCustom ? ' <span style="font-size:11px;color:var(--accent)" title="Aporte real registrado, no 50/50">✏️</span>' : ''}${!estaPagado ? ' <span style="font-size:11px;color:var(--warn)" title="Pendiente de pago">⏳ Pendiente</span>' : ''}</div>${g.cuota_num ? `<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}${g.fecha_compra&&g.fecha_compra!==g.fecha?` · comprado el ${g.fecha_compra}`:''}</div>` : ''}</td>
         <td><span class="tag">${catObj.emoji} ${g.cat || '—'}</span></td>
         <td>${g.moneda === 'USD' ? fmtUSD(g.monto) : fmtARS(g.monto)}</td>
         <td style="text-align:center">${chkMi}</td>
