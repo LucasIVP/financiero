@@ -3387,7 +3387,7 @@ function getUltimoIngresoFijo() {
   };
 }
 
-function renderObjetivosDashboard(tI, tG, bal) {
+function renderObjetivosDashboard(tI, tG, bal, ahorroReg = 0) {
   const el = document.getElementById('dash-objetivos');
   if (!el) return;
   const cfg = db.config;
@@ -3408,7 +3408,9 @@ function renderObjetivosDashboard(tI, tG, bal) {
     sinIngresos = true;
   }
 
-  const ahorroObjetivo = ingresoRef * (pctAhorro / 100);
+  const { month: oMes, year: oAnio } = getSelectedMonthYear('dash-month', 'dash-year');
+  const meta = getMetaAhorro(oMes, oAnio, ingresoRef);
+  const ahorroObjetivo = meta.obj;
   const gastoMaximo = ingresoRef - ahorroObjetivo;
   const gastoPct = gastoMaximo > 0 ? Math.min(Math.round(tG / gastoMaximo * 100), 100) : 0;
   const barColor = gastoPct >= 100 ? 'var(--red)' : gastoPct >= 85 ? 'var(--warn)' : 'var(--green)';
@@ -3423,11 +3425,11 @@ function renderObjetivosDashboard(tI, tG, bal) {
     const ahorroRealPct = tI > 0 ? Math.round(ahorroReal / tI * 100) : 0;
     const cumple = ahorroReal >= ahorroObjetivo;
     ahorroStatus = `<div style="display:flex;align-items:center;gap:8px;font-size:13px">
-      <span style="${cumple ? 'color:var(--green)' : 'color:var(--red)'};font-weight:700;font-size:16px">${cumple ? '✓' : '✗'}</span>
-      <span>Ahorro real: <strong>${fmtARS(ahorroReal)}</strong> (${ahorroRealPct}%) — objetivo: <strong>${fmtARS(ahorroObjetivo)}</strong> (${pctAhorro}%)</span>
-    </div>`;
+      <span style="${cumple ? 'color:var(--green)' : 'color:var(--warn)'};font-weight:700;font-size:16px">${cumple ? '✓' : '•'}</span>
+      <span>Ahorro real: <strong>${fmtARS(ahorroReal)}</strong> (${ahorroRealPct}%) — meta: <strong>${fmtARS(ahorroObjetivo)}</strong>${meta.esManual ? ` (USD ${meta.usd})` : ` (${pctAhorro}%)`}</span>
+    </div>${!cumple ? `<div style="font-size:12px;color:var(--warn);margin-top:4px">Faltaron ${fmtARS(ahorroObjetivo - ahorroReal)} para la meta${meta.esManual ? '' : ''}</div>` : ''}${ahorroReg > 0 ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">Incluye ${fmtARS(ahorroReg)} cargados como Ahorro en Gastos</div>` : ''}`;
   } else {
-    ahorroStatus = `<div style="font-size:13px;color:var(--muted)">Ahorro objetivo: <strong style="color:var(--accent)">${fmtARS(ahorroObjetivo)}</strong> (${pctAhorro}% de ${fmtARS(ingresoRef)})</div>`;
+    ahorroStatus = `<div style="font-size:13px;color:var(--muted)">Meta de ahorro: <strong style="color:var(--accent)">${fmtARS(ahorroObjetivo)}</strong> ${meta.esManual ? `(USD ${meta.usd})` : `(${pctAhorro}% de ${fmtARS(ingresoRef)})`}</div>`;
   }
 
   el.innerHTML = `<div class="card" style="border-color:rgba(108,99,255,0.3)">
@@ -3453,7 +3455,13 @@ function renderObjetivosDashboard(tI, tG, bal) {
       <div>
         ${ahorroStatus}
         <div style="margin-top:8px;font-size:12px;color:var(--muted)">
-          Techo = Ingreso ${sinIngresos?'ref.':'real'} ${fmtARS(ingresoRef)} − ${pctAhorro}% ahorro = <strong>${fmtARS(gastoMaximo)}</strong>
+          Techo = Ingreso ${sinIngresos?'ref.':'real'} ${fmtARS(ingresoRef)} − meta de ahorro ${fmtARS(ahorroObjetivo)} = <strong>${fmtARS(gastoMaximo)}</strong>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <span>Meta de ${MONTHS[oMes]} (USD):</span>
+          <input type="number" id="meta-ahorro-usd" min="0" value="${meta.esManual ? meta.usd : ''}" placeholder="${meta.esManual ? '' : '≈ ' + (db.config.dolar ? Math.round(meta.obj / db.config.dolar) : '—')}" style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px;color:var(--text);font-size:12px;outline:none">
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="guardarMetaAhorro(${oMes},${oAnio})">Guardar</button>
+          ${meta.esManual ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="borrarMetaAhorro(${oMes},${oAnio})" title="Volver a la meta por porcentaje de Config">Usar ${pctAhorro}%</button>` : ''}
         </div>
       </div>
     </div>
@@ -3477,16 +3485,18 @@ function renderDashboard(){
   const tC=cuotasMes.reduce((s,g)=>s+toARS(g.monto,g.moneda),0);
   const nPlanesActivos=planesActivos.length;
   const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
+  const ahorroReg=gastos.filter(g=>g.tipo==='ahorro').reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
+  const tGsa=tG-ahorroReg; // gastos sin lo cargado como Ahorro
   // Balance de referencia: si no hay ingresos cargados este mes, usar el último ingreso fijo conocido (misma lógica que Objetivos del mes)
-  let balParaMostrar=bal, balEsRef=false, balRefLabel='';
+  let balParaMostrar=bal+ahorroReg, balEsRef=false, balRefLabel='';
   if(tI===0){
     const ultimoFijo=getUltimoIngresoFijo();
-    if(ultimoFijo){balParaMostrar=ultimoFijo.total-tG;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
+    if(ultimoFijo){balParaMostrar=ultimoFijo.total-tGsa;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
   }
   const balSub=balEsRef
     ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}</div>`
-    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}</div>`;
-  document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
+    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroReg>0?' · incluye '+fmtARS(ahorroReg)+' ahorrado':''}</div>`;
+  document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tGsa)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
   // Pendientes de pago del mes seleccionado
   const pendientes=gastos.filter(g=>g.pagado===false);
   const totalPendiente=pendientes.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
@@ -3560,7 +3570,8 @@ function renderDashboard(){
       ptDiv.innerHTML='';
     }
   }
-  renderObjetivosDashboard(tI, tG, bal);
+  // Los gastos cargados con Tipo = Ahorro no cuentan como gasto: suman a la línea de ahorro
+  renderObjetivosDashboard(tI, tG - ahorroReg, bal + ahorroReg, ahorroReg);
   renderLimitesConjuntos(month, year, 'dash-limites', true);
   publicarMiMargen();
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
@@ -3584,6 +3595,39 @@ function renderDashboard(){
 //   Se publica desde el cliente de cada uno, porque los gastos personales del otro no son visibles por RLS:
 //   así la pareja ve solo el número agregado, no el detalle.
 // ============================================================
+// Meta de ahorro mensual (en USD). Si el mes no tiene meta propia se usa el % de ingreso de Config.
+let metasAhorro = {};
+async function loadMetasAhorro() {
+  try {
+    const { data } = await sb.from('ahorro_meta_mes').select('*').eq('user_id', currentUser.id);
+    metasAhorro = {};
+    (data || []).forEach(r => { metasAhorro[r.mes] = r; });
+  } catch (e) { console.warn('loadMetasAhorro falló:', e); }
+}
+function getMetaAhorro(month, year, ingreso) {
+  const r = metasAhorro[ymKey(month, year)];
+  if (r) return { esManual: true, usd: Number(r.meta_usd), obj: Number(r.meta_usd) * (db.config.dolar || 1) };
+  return { esManual: false, usd: null, obj: ingreso * (db.config.obj_ahorro || 20) / 100 };
+}
+async function guardarMetaAhorro(month, year) {
+  const v = parseFloat(document.getElementById('meta-ahorro-usd')?.value);
+  if (isNaN(v) || v < 0) { showToast('Ingresá una meta válida en USD (0 si este mes no vas a ahorrar).', 'error'); return; }
+  const row = { user_id: currentUser.id, mes: ymKey(month, year), meta_usd: v, updated_at: new Date().toISOString() };
+  const { error } = await sb.from('ahorro_meta_mes').upsert(row, { onConflict: 'user_id,mes' });
+  if (error) { showToast('No se pudo guardar la meta: ' + error.message, 'error'); return; }
+  metasAhorro[row.mes] = row;
+  showToast('Meta de ahorro guardada ✓');
+  renderDashboard();
+}
+async function borrarMetaAhorro(month, year) {
+  const mes = ymKey(month, year);
+  const { error } = await sb.from('ahorro_meta_mes').delete().eq('user_id', currentUser.id).eq('mes', mes);
+  if (error) { showToast('No se pudo restablecer: ' + error.message, 'error'); return; }
+  delete metasAhorro[mes];
+  showToast('Meta restablecida al porcentaje de Config');
+  renderDashboard();
+}
+
 let limitesConj = { row: null, margenes: {} };
 const CATS_COMIDA_DEFAULT = ['Comida', 'Supermercado'];
 
@@ -3606,7 +3650,9 @@ async function loadLimitesConjuntos() {
 // Margen propio del mes: ingresos − gastos efectivos (mi parte de lo compartido) − ahorro objetivo.
 // Si el mes no tiene ingresos cargados se usa el último sueldo fijo conocido (misma regla que Balance/Objetivos).
 function calcMiMargen(month, year) {
-  const comprometido = getGastosConSuscripciones(month, year).reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
+  const gastosMes = getGastosConSuscripciones(month, year);
+  const ahorroHecho = gastosMes.filter(g => g.tipo === 'ahorro').reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
+  const comprometido = gastosMes.filter(g => g.tipo !== 'ahorro').reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
   let ingreso = filterByMonth(db.ingresos, month, year).reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
   let esRef = false;
   if (ingreso === 0) {
@@ -3614,8 +3660,10 @@ function calcMiMargen(month, year) {
     if (u) { ingreso = u.total; esRef = true; }
   }
   const pctAhorro = db.config.obj_ahorro || 20;
-  const ahorro = ingreso * pctAhorro / 100;
-  return { ingreso, comprometido, ahorro, pctAhorro, esRef, disponible: ingreso - comprometido - ahorro };
+  const ahorroObj = getMetaAhorro(month, year, ingreso).obj;
+  // Lo ya cargado como Ahorro cuenta contra el objetivo: solo se reserva lo que falta apartar
+  const ahorro = Math.max(ahorroHecho, ahorroObj);
+  return { ingreso, comprometido, ahorro, ahorroHecho, ahorroObj, pctAhorro, esRef, disponible: ingreso - comprometido - ahorro };
 }
 
 function getMargenPareja(month, year) {
@@ -3748,7 +3796,7 @@ function renderLimitesConjuntos(month, year, targetId, compact) {
       <div style="font-size:20px;font-weight:700;color:${col};margin:4px 0">${fmtARS(d.disponible)}</div>
       <div style="font-size:11px;color:var(--muted)">disponible para gastos</div>
       <div class="progress-wrap"><div class="progress-bar" style="width:${Math.max(0, Math.min(pctU, 100))}%;background:${col}"></div></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">Ingreso ${fmtARS(d.ingreso)}${d.esRef ? ' (est.)' : ''} · Gastos ${fmtARS(d.comprometido)} · Ahorro ${fmtARS(d.ahorro)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Ingreso ${fmtARS(d.ingreso)}${d.esRef ? ' (est.)' : ''} · Gastos ${fmtARS(d.comprometido)} · Ahorro ${d.ahorroHecho !== undefined ? fmtARS(d.ahorroHecho) + ' de ' + fmtARS(d.ahorroObj) : fmtARS(d.ahorro)}</div>
     </div>`;
   };
   const miMargenRow = { ...yo };
@@ -3845,7 +3893,7 @@ function showApp(){
   const today=new Date().toISOString().slice(0,10);
   ['g-fecha','i-fecha','c-fecha','vaq-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   fillMonthYearSelects('tc-month','tc-year');
-  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(()=>{renderDashboard();renderCompartido();initChequeoLimiteForm();});
+  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();Promise.all([loadCompartido(),loadLimitesConjuntos(),loadMetasAhorro()]).then(()=>{renderDashboard();renderCompartido();initChequeoLimiteForm();});
 }
 
 async function init(){
