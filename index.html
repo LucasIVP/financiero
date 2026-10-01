@@ -185,6 +185,7 @@
     </div>
   </div>
   <div class="grid-4" id="dash-kpis"></div>
+  <div id="dash-limites" style="margin-bottom:20px"></div>
   <div id="dash-pendientes" style="display:none;margin-bottom:20px"></div>
   <div id="dash-grupales-vinculados" style="display:none;margin-bottom:20px"></div>
   <div id="dash-prestamos-vinculados" style="display:none;margin-bottom:20px"></div>
@@ -249,6 +250,7 @@
           <label>¿Puso una parte tu pareja al momento de pagar? <span style="color:var(--muted);font-weight:400">(opcional — dejalo vacío si vos pagaste todo)</span></label>
           <input type="number" id="g-aporte-pareja" placeholder="Ej: 20000 (monto que puso tu pareja)" min="0">
         </div>
+        <div class="form-group" id="g-limite-check" style="display:none;grid-column:1/-1"></div>
         <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="g-pagado" checked style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado <span style="color:var(--muted);font-weight:400">(destildá si es un gasto pendiente de pago)</span></span></label></div>
         <div class="form-group" id="g-recurrente-field" style="grid-column:1/-1;display:none">
           <div style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.3);border-radius:10px;padding:14px">
@@ -591,6 +593,8 @@
       <select id="comp-year" onchange="renderCompartido()"></select>
     </div>
   </div>
+
+  <div id="comp-limites" style="margin-bottom:20px"></div>
 
   <div id="comp-total-deuda" style="margin-bottom:20px"></div>
 
@@ -1691,7 +1695,7 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
-  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>loadCompartido().then(renderCompartido),config:renderConfig,compras:renderCompras};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(renderCompartido),config:renderConfig,compras:renderCompras};
   if(renders[page])renders[page]();
 }
 function innerTab(section,tab,evt){
@@ -2059,6 +2063,7 @@ function clearGastoForm(){
   if(fields)fields.style.display='none';
   const ncuotas=document.getElementById('g-ncuotas');
   if(ncuotas)ncuotas.value='1';
+  actualizarChequeoLimite();
 }
 let _deletePlanCtx={id:null,planId:null,total:0};
 // CONFIRMACIÓN DE ELIMINACIÓN GENÉRICA
@@ -3556,6 +3561,8 @@ function renderDashboard(){
     }
   }
   renderObjetivosDashboard(tI, tG, bal);
+  renderLimitesConjuntos(month, year, 'dash-limites', true);
+  publicarMiMargen();
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const ctx1=document.getElementById('chart-cat').getContext('2d');if(chartCat)chartCat.destroy();
@@ -3570,6 +3577,262 @@ function renderDashboard(){
   document.getElementById('dash-ultimos').innerHTML=(ultMes.length===0?'<div class="empty-state">Sin movimientos este mes</div>':ultMes.map(g=>{const montoEf=gastoEfectivo(g,month,year);const catObj=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄'};const esGrupalD=(g.desc||g.descripcion||'').includes('(parte grupal');return`<div class="summary-row"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">${catObj.emoji}</span><div><div style="font-size:14px;font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupalD?' <span style="font-size:11px;color:var(--warn)">🤝</span>':''}</div><div style="font-size:12px;color:var(--muted)">${g.fecha} · ${g.cat}</div></div></div><span class="amount-negative" style="font-weight:600">${fmtARS(montoEf)}</span></div>`;}).join(''))+(gastos.length>5?`<div style="text-align:center;margin-top:10px"><button onclick="irAGastosMes(${month},${year})" style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer">Ver todos los movimientos (${gastos.length}) →</button></div>`:'');
 }
 
+// ============================================================
+// LÍMITES CONJUNTOS (pareja): tope mensual de comida + margen disponible de cada uno
+// - pareja_limites: 1 fila por pareja (límite de comida y categorías que cuentan), editable por ambos
+// - pareja_margen: 1 fila por usuario y mes con SU margen disponible (ingreso − gastos − ahorro objetivo).
+//   Se publica desde el cliente de cada uno, porque los gastos personales del otro no son visibles por RLS:
+//   así la pareja ve solo el número agregado, no el detalle.
+// ============================================================
+let limitesConj = { row: null, margenes: {} };
+const CATS_COMIDA_DEFAULT = ['Comida', 'Supermercado'];
+
+function ymKey(month, year) { return `${year}-${String(month + 1).padStart(2, '0')}`; }
+
+async function loadLimitesConjuntos() {
+  try {
+    const par = miParejaActual();
+    if (!par) { limitesConj = { row: null, margenes: {} }; return; }
+    const [l, m] = await Promise.all([
+      sb.from('pareja_limites').select('*').eq('pareja_id', par.id).maybeSingle(),
+      sb.from('pareja_margen').select('*').in('user_id', [currentUser.id, par.partnerId])
+    ]);
+    limitesConj.row = l.data || null;
+    limitesConj.margenes = {};
+    (m.data || []).forEach(r => { limitesConj.margenes[r.user_id + '|' + r.mes] = r; });
+  } catch (e) { console.warn('loadLimitesConjuntos falló:', e); }
+}
+
+// Margen propio del mes: ingresos − gastos efectivos (mi parte de lo compartido) − ahorro objetivo.
+// Si el mes no tiene ingresos cargados se usa el último sueldo fijo conocido (misma regla que Balance/Objetivos).
+function calcMiMargen(month, year) {
+  const comprometido = getGastosConSuscripciones(month, year).reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
+  let ingreso = filterByMonth(db.ingresos, month, year).reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
+  let esRef = false;
+  if (ingreso === 0) {
+    const u = getUltimoIngresoFijo();
+    if (u) { ingreso = u.total; esRef = true; }
+  }
+  const pctAhorro = db.config.obj_ahorro || 20;
+  const ahorro = ingreso * pctAhorro / 100;
+  return { ingreso, comprometido, ahorro, pctAhorro, esRef, disponible: ingreso - comprometido - ahorro };
+}
+
+function getMargenPareja(month, year) {
+  const par = miParejaActual();
+  if (!par) return null;
+  return limitesConj.margenes[par.partnerId + '|' + ymKey(month, year)] || null;
+}
+
+let _pubMargenT = null;
+function publicarMiMargen() {
+  clearTimeout(_pubMargenT);
+  _pubMargenT = setTimeout(async () => {
+    try {
+      if (!currentUser || !miParejaActual()) return;
+      const { month, year } = currentYM();
+      const m = calcMiMargen(month, year);
+      const row = {
+        user_id: currentUser.id, mes: ymKey(month, year),
+        ingreso: Math.round(m.ingreso), comprometido: Math.round(m.comprometido),
+        ahorro: Math.round(m.ahorro), disponible: Math.round(m.disponible),
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await sb.from('pareja_margen').upsert(row, { onConflict: 'user_id,mes' });
+      if (!error) limitesConj.margenes[row.user_id + '|' + row.mes] = row;
+      else console.warn('publicarMiMargen falló:', error.message);
+    } catch (e) { console.warn('publicarMiMargen falló:', e); }
+  }, 1500);
+}
+
+function getCatsComida() {
+  const c = limitesConj.row && limitesConj.row.cats_comida;
+  return (c && c.length) ? c : CATS_COMIDA_DEFAULT;
+}
+
+// Gasto conjunto en comida del mes (monto completo de los gastos compartidos de las categorías elegidas)
+function calcComidaConjunta(month, year) {
+  const cats = new Set(getCatsComida());
+  const gastado = getGastosConSuscripciones(month, year)
+    .filter(g => g.es_compartido && cats.has(g.cat))
+    .reduce((s, g) => s + toARS(g.monto, g.moneda), 0);
+  const limite = (limitesConj.row && Number(limitesConj.row.limite_comida)) || 0;
+  return { gastado, limite };
+}
+
+function colorPct(pct) { return pct > 100 ? 'var(--red)' : (pct >= 75 ? 'var(--warn)' : 'var(--green)'); }
+
+function haceCuanto(iso) {
+  if (!iso) return '';
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 2) return 'recién';
+  if (min < 60) return `hace ${min} min`;
+  if (min < 60 * 24) return `hace ${Math.round(min / 60)} h`;
+  return `hace ${Math.round(min / 1440)} d`;
+}
+
+async function guardarLimiteComida() {
+  const par = miParejaActual();
+  if (!par) return;
+  const v = parseFloat(document.getElementById('lim-comida-input')?.value);
+  if (isNaN(v) || v < 0) { showToast('Ingresá un monto válido para el límite.', 'error'); return; }
+  const row = {
+    pareja_id: par.id, limite_comida: v,
+    cats_comida: getCatsComida(), updated_by: currentUser.id, updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('pareja_limites').upsert(row, { onConflict: 'pareja_id' });
+  if (error) { showToast('No se pudo guardar el límite: ' + error.message, 'error'); return; }
+  limitesConj.row = row;
+  showToast('Límite de comida guardado ✓');
+  const { month, year } = getSelectedMonthYear('comp-month', 'comp-year');
+  renderLimitesConjuntos(month, year, 'comp-limites', false);
+  const dm = getSelectedMonthYear('dash-month', 'dash-year');
+  renderLimitesConjuntos(dm.month, dm.year, 'dash-limites', true);
+}
+
+function renderLimitesConjuntos(month, year, targetId, compact) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const par = miParejaActual();
+  if (!par) {
+    el.innerHTML = compact ? '' : `<div class="card"><div style="font-weight:600;margin-bottom:6px">🎯 Límites conjuntos</div><div style="font-size:13px;color:var(--muted)">Vinculá a tu pareja en Config para compartir el límite de comida y ver el margen de cada uno.</div></div>`;
+    return;
+  }
+  const { propYo, propOtro } = calcProporcionMes(month, year);
+  const comida = calcComidaConjunta(month, year);
+  const yo = calcMiMargen(month, year);
+  const esMesActual = ymKey(month, year) === ymKey(currentYM().month, currentYM().year);
+  const otro = getMargenPareja(month, year);
+  const mesLabel = `${MONTHS[month]} ${year}`;
+
+  // ---- Barra de comida ----
+  const tieneLimite = comida.limite > 0;
+  const pctC = tieneLimite ? Math.round(comida.gastado / comida.limite * 100) : 0;
+  const restante = comida.limite - comida.gastado;
+  const colC = colorPct(pctC);
+  const catsTxt = getCatsComida().join(' + ');
+  const editor = compact ? '' : `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
+      <label style="font-size:12px;color:var(--muted)">Límite mensual de comida (ambos lo ven):</label>
+      <input type="number" id="lim-comida-input" min="0" value="${comida.limite || ''}" placeholder="Ej: 400000" style="width:150px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:13px;outline:none">
+      <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px" onclick="guardarLimiteComida()">Guardar</button>
+    </div>`;
+  const comidaHTML = `
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+        <div style="font-weight:600">🍽️ Comida conjunta · ${mesLabel}</div>
+        <div style="font-size:13px"><span style="font-weight:700;color:${tieneLimite ? colC : 'var(--text)'}">${fmtARS(comida.gastado)}</span><span style="color:var(--muted)"> ${tieneLimite ? '/ ' + fmtARS(comida.limite) : '(sin límite definido)'}</span></div>
+      </div>
+      <div class="progress-wrap" style="height:12px"><div class="progress-bar" style="width:${tieneLimite ? Math.min(pctC, 100) : 0}%;background:${colC}"></div></div>
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--muted);margin-top:6px">
+        <span>${tieneLimite ? (restante >= 0 ? `Quedan <b style="color:${colC}">${fmtARS(restante)}</b> (${pctC}% usado)` : `<b style="color:var(--red)">Se pasaron por ${fmtARS(-restante)}</b> (${pctC}%)`) : (compact ? 'Definí el límite en Compartido' : 'Definí un límite para ver la barra')}</span>
+        <span>Cuenta: ${catsTxt}</span>
+      </div>
+      ${tieneLimite ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">Tu parte (${Math.round(propYo * 100)}%): ${fmtARS(comida.gastado * propYo)} · Parte pareja (${Math.round(propOtro * 100)}%): ${fmtARS(comida.gastado * propOtro)}</div>` : ''}
+      ${editor}
+    </div>`;
+
+  // ---- Margen de cada uno ----
+  const tarjetaMargen = (titulo, d, esPropio) => {
+    if (!d) {
+      return `<div style="background:var(--surface2);border-radius:10px;padding:12px">
+        <div style="font-size:12px;color:var(--muted)">${titulo}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">${esMesActual ? 'Sin datos todavía — se actualiza cuando tu pareja abra el tablero.' : 'Solo se comparte el margen del mes actual.'}</div>
+      </div>`;
+    }
+    const usado = d.comprometido + d.ahorro;
+    const pctU = d.ingreso > 0 ? Math.round(usado / d.ingreso * 100) : 0;
+    const col = d.disponible < 0 ? 'var(--red)' : colorPct(pctU);
+    return `<div style="background:var(--surface2);border-radius:10px;padding:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>${titulo}</span>${esPropio ? '' : `<span title="Último momento en que tu pareja abrió el tablero">act. ${haceCuanto(d.updated_at)}</span>`}</div>
+      <div style="font-size:20px;font-weight:700;color:${col};margin:4px 0">${fmtARS(d.disponible)}</div>
+      <div style="font-size:11px;color:var(--muted)">disponible para gastos</div>
+      <div class="progress-wrap"><div class="progress-bar" style="width:${Math.max(0, Math.min(pctU, 100))}%;background:${col}"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Ingreso ${fmtARS(d.ingreso)}${d.esRef ? ' (est.)' : ''} · Gastos ${fmtARS(d.comprometido)} · Ahorro ${fmtARS(d.ahorro)}</div>
+    </div>`;
+  };
+  const miMargenRow = { ...yo };
+  const margenHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+      ${tarjetaMargen('Vos', miMargenRow, true)}
+      ${tarjetaMargen('Tu pareja', otro, false)}
+    </div>`;
+
+  // ---- Tope de una compra conjunta nueva ----
+  let topeHTML = '';
+  if (otro) {
+    const topeYo = propYo > 0 ? Math.max(0, yo.disponible) / propYo : Infinity;
+    const topeOtro = propOtro > 0 ? Math.max(0, otro.disponible) / propOtro : Infinity;
+    let tope = Math.min(topeYo, topeOtro);
+    let limita = topeYo <= topeOtro ? 'tu margen' : 'el margen de tu pareja';
+    if (tieneLimite) { /* el tope de comida se aplica solo a categorías de comida: se muestra aparte */ }
+    if (isFinite(tope)) {
+      topeHTML = `<div style="margin-top:12px;padding:10px 12px;border:1px dashed var(--border);border-radius:10px;font-size:13px">
+        🛒 Hoy pueden gastar juntos hasta <b style="color:var(--accent2)">${fmtARS(tope)}</b> en una compra conjunta nueva <span style="color:var(--muted)">(lo limita ${limita}; cada uno pone según su proporción de ingresos)</span>${tieneLimite && restante >= 0 ? `<br><span style="color:var(--muted);font-size:12px">Si es de comida, el máximo es el menor entre eso y lo que queda del límite: ${fmtARS(Math.min(tope, restante))}</span>` : ''}
+      </div>`;
+    }
+  }
+
+  el.innerHTML = `<div class="card" ${compact ? 'style="padding:14px 16px"' : ''}>
+    <div style="font-weight:600;margin-bottom:12px">🎯 Límites conjuntos${compact ? ` <a href="#" onclick="goTo('compartido');return false" style="font-size:12px;color:var(--accent);font-weight:400;margin-left:8px">Editar →</a>` : ''}</div>
+    ${comidaHTML}
+    <div style="height:14px"></div>
+    ${margenHTML}
+    ${topeHTML}
+  </div>`;
+}
+
+// Chequeo en vivo al cargar un gasto compartido: ¿entra en el límite de comida y en el margen de cada uno?
+function actualizarChequeoLimite() {
+  const el = document.getElementById('g-limite-check');
+  if (!el) return;
+  const comp = document.getElementById('g-compartido')?.checked;
+  const monto = parseFloat(document.getElementById('g-monto')?.value) || 0;
+  if (!comp || monto <= 0 || !miParejaActual()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const moneda = document.getElementById('g-moneda')?.value || 'ARS';
+  const medio = document.getElementById('g-medio')?.value;
+  const cat = document.getElementById('g-cat')?.value;
+  let montoARS = toARS(monto, moneda);
+  let month, year;
+  if (medio === 'credito') {
+    const n = parseInt(document.getElementById('g-ncuotas')?.value) || 1;
+    montoARS = montoARS / n; // lo que pesa en el mes es la cuota, no el total
+    month = parseInt(document.getElementById('g-cuota-mes')?.value);
+    year = parseInt(document.getElementById('g-cuota-anio')?.value);
+  }
+  if (isNaN(month) || isNaN(year)) {
+    const f = document.getElementById('g-fecha')?.value;
+    const d = f ? new Date(f + 'T12:00:00') : new Date();
+    month = d.getMonth(); year = d.getFullYear();
+  }
+  const { propYo, propOtro } = calcProporcionMes(month, year);
+  const miParte = montoARS * propYo, suParte = montoARS * propOtro;
+  const yo = calcMiMargen(month, year);
+  const otro = getMargenPareja(month, year);
+  const lineas = [];
+  const ok = (cond, txt) => `<div style="color:${cond ? 'var(--green)' : 'var(--red)'}">${cond ? '✅' : '⚠️'} ${txt}</div>`;
+  lineas.push(ok(miParte <= yo.disponible, `Tu parte: ${fmtARS(miParte)} · te quedan ${fmtARS(yo.disponible - miParte)} de ${fmtARS(yo.disponible)}`));
+  if (otro) lineas.push(ok(suParte <= otro.disponible, `Parte de tu pareja: ${fmtARS(suParte)} · le quedan ${fmtARS(otro.disponible - suParte)} de ${fmtARS(otro.disponible)}`));
+  else lineas.push(`<div style="color:var(--muted)">Margen de tu pareja: sin datos para ${MONTHS[month]} ${year}</div>`);
+  const catsComida = new Set(getCatsComida());
+  if (catsComida.has(cat)) {
+    const c = calcComidaConjunta(month, year);
+    if (c.limite > 0) {
+      const despues = c.gastado + montoARS;
+      lineas.push(ok(despues <= c.limite, `Comida conjunta: ${fmtARS(despues)} de ${fmtARS(c.limite)} (${Math.round(despues / c.limite * 100)}%) con este gasto`));
+    }
+  }
+  el.style.display = 'block';
+  el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6"><div style="font-weight:600;margin-bottom:4px">🎯 Límites conjuntos${medio === 'credito' ? ' (valor de la cuota)' : ''}</div>${lineas.join('')}</div>`;
+}
+
+function initChequeoLimiteForm() {
+  ['g-monto', 'g-cat', 'g-compartido', 'g-fecha', 'g-moneda', 'g-medio', 'g-ncuotas', 'g-cuota-mes', 'g-cuota-anio'].forEach(id => {
+    const n = document.getElementById(id);
+    if (n) { n.addEventListener('input', actualizarChequeoLimite); n.addEventListener('change', actualizarChequeoLimite); }
+  });
+}
+
 // INIT
 function showApp(){
   document.getElementById('auth-screen').style.display='none';
@@ -3582,7 +3845,7 @@ function showApp(){
   const today=new Date().toISOString().slice(0,10);
   ['g-fecha','i-fecha','c-fecha','vaq-fecha'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today;});
   fillMonthYearSelects('tc-month','tc-year');
-  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();loadCompartido().then(()=>{renderDashboard();renderCompartido();});
+  populateCatSelects();populateTarjetaSelects();renderConfig();snapshotPatrimonio();Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(()=>{renderDashboard();renderCompartido();initChequeoLimiteForm();});
 }
 
 async function init(){
@@ -3926,6 +4189,7 @@ function renderCompartido() {
 
   renderVaquita();
   renderTotalDeudaPareja();
+  renderLimitesConjuntos(month, year, 'comp-limites', false);
 }
 
 // Selector manual de ítems para saber cuánto pedir/transferir por un subconjunto puntual
