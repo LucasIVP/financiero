@@ -3630,6 +3630,7 @@ async function borrarMetaAhorro(month, year) {
 
 let limitesConj = { row: null, margenes: {} };
 const CATS_COMIDA_DEFAULT = ['Comida', 'Supermercado'];
+const CATS_FUERA_MARGEN = new Set(['Actividades']);
 
 function ymKey(month, year) { return `${year}-${String(month + 1).padStart(2, '0')}`; }
 
@@ -3652,7 +3653,9 @@ async function loadLimitesConjuntos() {
 function calcMiMargen(month, year) {
   const gastosMes = getGastosConSuscripciones(month, year);
   const ahorroHecho = gastosMes.filter(g => g.tipo === 'ahorro').reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
-  const comprometido = gastosMes.filter(g => g.tipo !== 'ahorro').reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
+  const comprometido = gastosMes.filter(g => g.tipo !== 'ahorro' && !CATS_FUERA_MARGEN.has(g.cat)).reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
+// Categorías que se cuentan "por fuera" del margen (ej. salidas de pareja): no restan del disponible, pero se muestran aparte
+const fuera = gastosMes.filter(g => g.tipo !== 'ahorro' && CATS_FUERA_MARGEN.has(g.cat)).reduce((s, g) => s + gastoEfectivo(g, month, year), 0);
   let ingreso = filterByMonth(db.ingresos, month, year).reduce((s, i) => s + toARS(i.monto, i.moneda), 0);
   let esRef = false;
   if (ingreso === 0) {
@@ -3663,7 +3666,7 @@ function calcMiMargen(month, year) {
   const ahorroObj = getMetaAhorro(month, year, ingreso).obj;
   // Lo ya cargado como Ahorro cuenta contra el objetivo: solo se reserva lo que falta apartar
   const ahorro = Math.max(ahorroHecho, ahorroObj);
-  return { ingreso, comprometido, ahorro, ahorroHecho, ahorroObj, pctAhorro, esRef, disponible: ingreso - comprometido - ahorro };
+  return { ingreso, comprometido, fuera, ahorro, ahorroHecho, ahorroObj, pctAhorro, esRef, disponible: ingreso - comprometido - ahorro };
 }
 
 function getMargenPareja(month, year) {
@@ -3796,7 +3799,7 @@ function renderLimitesConjuntos(month, year, targetId, compact) {
       <div style="font-size:20px;font-weight:700;color:${col};margin:4px 0">${fmtARS(d.disponible)}</div>
       <div style="font-size:11px;color:var(--muted)">disponible para gastos</div>
       <div class="progress-wrap"><div class="progress-bar" style="width:${Math.max(0, Math.min(pctU, 100))}%;background:${col}"></div></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">Ingreso ${fmtARS(d.ingreso)}${d.esRef ? ' (est.)' : ''} · Gastos ${fmtARS(d.comprometido)} · Ahorro ${d.ahorroHecho !== undefined ? fmtARS(d.ahorroHecho) + ' de ' + fmtARS(d.ahorroObj) : fmtARS(d.ahorro)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Ingreso ${fmtARS(d.ingreso)}${d.esRef ? ' (est.)' : ''} · Gastos ${fmtARS(d.comprometido)}${d.fuera ? ' (+' + fmtARS(d.fuera) + ' aparte en Actividades)' : ''} · Ahorro ${d.ahorroHecho !== undefined ? fmtARS(d.ahorroHecho) + ' de ' + fmtARS(d.ahorroObj) : fmtARS(d.ahorro)}</div>
     </div>`;
   };
   const miMargenRow = { ...yo };
