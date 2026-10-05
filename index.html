@@ -4135,7 +4135,7 @@ function renderCompartido() {
     // en $ refleja lo que la gente realmente tilda como pagado día a día, no solo transferencias registradas
     // a mano en "Aporte pareja". Excepción: filas virtuales de recurrentes (_virtual) todavía no tienen esos
     // campos reales, así que siguen el cálculo de siempre.
-    const ambosPagados = !g._virtual && (g.pagado_dueno !== false) && (g.pagado_pareja !== false);
+    const ambosPagados = !g._virtual && (g.pagado_pareja !== false);
     const saldoYo = ambosPagados ? 0 : (yoCorresponde - yoAporte); // >0: todavía debo esta parte · <0: mi pareja me debe
     return { g, montoARS, esMio, yoAporte, parejaAporte, saldoYo, tieneAporteCustom: aportePartnerARS != null };
   });
@@ -4299,7 +4299,7 @@ function renderTotalDeudaPareja() {
     const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
     const yoCorresponde = montoARS * propYo;
     // Mismo criterio que la tabla de arriba: si ya está marcado pagado por ambas partes, no suma al total.
-    const ambosPagados = !g._virtual && (g.pagado_dueno !== false) && (g.pagado_pareja !== false);
+    const ambosPagados = !g._virtual && (g.pagado_pareja !== false);
     balanceCompartido += ambosPagados ? 0 : (yoCorresponde - yoAporte);
   });
 
@@ -4378,7 +4378,7 @@ function mostrarDesgloseDeuda() {
     const aporteDuenoARS = aportePartnerARS != null ? (montoARS - aportePartnerARS) : montoARS;
     const yoAporte = esMio ? aporteDuenoARS : (aportePartnerARS ?? 0);
     const yoCorresponde = montoARS * propYo;
-    const ambosPagados = !g._virtual && (g.pagado_dueno !== false) && (g.pagado_pareja !== false);
+    const ambosPagados = !g._virtual && (g.pagado_pareja !== false);
     const saldoYo = ambosPagados ? 0 : (yoCorresponde - yoAporte);
     if (Math.abs(saldoYo) < 1) return; // saldado, no suma
     itemsCompartidos.push({ fecha: g.fecha, descripcion: g.desc || g.descripcion, saldoYo });
