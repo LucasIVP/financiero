@@ -3488,14 +3488,14 @@ function renderDashboard(){
   const ahorroReg=gastos.filter(g=>g.tipo==='ahorro').reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
   const tGsa=tG-ahorroReg; // gastos sin lo cargado como Ahorro
   // Balance de referencia: si no hay ingresos cargados este mes, usar el último ingreso fijo conocido (misma lógica que Objetivos del mes)
-  let balParaMostrar=bal+ahorroReg, balEsRef=false, balRefLabel='';
+  let balParaMostrar=bal, balEsRef=false, balRefLabel='';
   if(tI===0){
     const ultimoFijo=getUltimoIngresoFijo();
-    if(ultimoFijo){balParaMostrar=ultimoFijo.total-tGsa;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
+    if(ultimoFijo){balParaMostrar=ultimoFijo.total-tG;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
   }
   const balSub=balEsRef
-    ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}</div>`
-    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroReg>0?' · incluye '+fmtARS(ahorroReg)+' ahorrado':''}</div>`;
+    ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}${ahorroReg>0?' · descuenta '+fmtARS(ahorroReg)+' de ahorro':''}</div>`
+    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroReg>0?' · ya descuenta '+fmtARS(ahorroReg)+' de ahorro (no tocar)':''}</div>`;
   document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tGsa)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div>${tIU>0?`<div class="card-sub">+ ${fmtUSD(tIU)} USD</div>`:''}</div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
   // Pendientes de pago del mes seleccionado
   const pendientes=gastos.filter(g=>g.pagado===false);
