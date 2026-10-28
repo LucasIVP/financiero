@@ -3132,7 +3132,7 @@ function renderInversiones(){
   document.getElementById('inv-list').innerHTML=invs.length===0?'<div class="empty-state">No hay inversiones cargadas</div>':invs.map(i=>{const g=i.valor-i.costo,pct=i.costo>0?(g/i.costo*100).toFixed(1):null;return`<div class="patrimonio-item"><div class="patrimonio-label"><span style="width:10px;height:10px;border-radius:50%;background:${catColor(i.tipo)};display:inline-block"></span><div><div style="font-weight:500">${i.nombre}</div><div style="font-size:12px;color:var(--muted)">${i.tipo}${i.notas?' · '+i.notas:''}</div></div></div><div style="text-align:right"><div style="font-weight:600">${i.moneda==='USD'?fmtUSD(i.valor):fmtARS(i.valor)}</div>${pct!==null?`<div style="font-size:12px;color:${g>=0?'var(--green)':'var(--red)'}">${g>=0?'+':''}${pct}%</div>`:''}<button class="del-btn" onclick="deleteInversion('${i.id}')">🗑</button></div></div>`;}).join('');
   const tipos={};invs.forEach(i=>{const v=toARS(i.valor,i.moneda);tipos[i.tipo]=(tipos[i.tipo]||0)+v;});
   const ctx=document.getElementById('chart-inv').getContext('2d');if(chartInv)chartInv.destroy();
-  if(Object.keys(tipos).length>0)chartInv=new Chart(ctx,{type:'doughnut',data:{labels:Object.keys(tipos),datasets:[{data:Object.values(tipos),backgroundColor:Object.keys(tipos).map(catColor),borderColor:'transparent'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#7b7f9e',font:{size:12}}}}}});
+  if(Object.keys(tipos).length>0)chartInv=new Chart(ctx,{type:'doughnut',data:{labels:Object.keys(tipos),datasets:[{data:Object.values(tipos),backgroundColor:Object.keys(tipos).map(catColor),borderColor:'transparent'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:mutedColor(),font:{size:12}}}}}});
 }
 
 // PATRIMONIO
@@ -3164,7 +3164,7 @@ function renderPatrimonio(){
   document.getElementById('deudas-list').innerHTML=db.deudas.length===0?'<div class="empty-state" style="color:var(--green)">Sin deudas 🎉</div>':db.deudas.map(d=>`<div class="patrimonio-item"><div class="patrimonio-label"><div><div style="font-weight:500;font-size:14px">${d.nombre}</div><div style="font-size:12px;color:var(--muted)">${d.entidad||''}${d.tasa?' · '+d.tasa+'% TNA':''}</div></div></div><div style="text-align:right"><div style="font-weight:600;font-size:14px;color:var(--red)">${d.moneda==='USD'?fmtUSD(d.saldo):fmtARS(d.saldo)}</div>${d.cuota_mensual?`<div style="font-size:12px;color:var(--muted)">Cuota: ${d.moneda==='USD'?fmtUSD(d.cuota_mensual):fmtARS(d.cuota_mensual)}</div>`:''}<button class="del-btn" onclick="deleteDeuda('${d.id}')">🗑</button></div></div>`).join('');
   const hist=db.patrimonioHistory.slice(-12),ctx2=document.getElementById('chart-pat').getContext('2d');
   if(chartPat)chartPat.destroy();
-  if(hist.length>0)chartPat=new Chart(ctx2,{type:'line',data:{labels:hist.map(h=>h.mes),datasets:[{label:'Patrimonio neto USD',data:hist.map(h=>h.neto),borderColor:'#00d4aa',backgroundColor:'rgba(0,212,170,0.1)',fill:true,tension:0.4,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:'#7b7f9e'}},y:{ticks:{color:'#7b7f9e',callback:v=>'$'+v.toLocaleString()}}},plugins:{legend:{labels:{color:'#7b7f9e'}}}}});
+  if(hist.length>0){const mc2=mutedColor();chartPat=new Chart(ctx2,{type:'line',data:{labels:hist.map(h=>h.mes),datasets:[{label:'Patrimonio neto USD',data:hist.map(h=>h.neto),borderColor:'#00d4aa',backgroundColor:'rgba(0,212,170,0.1)',fill:true,tension:0.4,pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:mc2}},y:{ticks:{color:mc2,callback:v=>'$'+v.toLocaleString()}}},plugins:{legend:{labels:{color:mc2}}}}});}
 }
 
 // CONFIG
@@ -6128,7 +6128,7 @@ function renderAnalisis() {
     chartAnCuotas = new Chart(ctxCuotas, {
       type: 'bar',
       data: { labels: proyeccion.map(p => p.ym), datasets: [{ label: 'Cuotas comprometidas', data: proyeccion.map(p => p.total), backgroundColor: '#6c63ff' }] },
-      options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { color: '#7b7f9e' } }, y: { ticks: { color: '#7b7f9e', callback: v => '$' + v.toLocaleString() } } }, plugins: { legend: { display: false } } }
+      options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { color: mutedColor() } }, y: { ticks: { color: mutedColor(), callback: v => '$' + v.toLocaleString() } } }, plugins: { legend: { display: false } } }
     });
   }
 
@@ -6140,7 +6140,7 @@ function renderAnalisis() {
     chartAnFijos = new Chart(ctxFijos, {
       type: 'doughnut',
       data: { labels: ['Fijos', 'Variables'], datasets: [{ data: [fv.fijos, fv.variables], backgroundColor: ['#6c63ff', '#00d4aa'], borderColor: 'transparent' }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#7b7f9e', font: { size: 12 } } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: mutedColor(), font: { size: 12 } } } } }
     });
     document.getElementById('an-fijos-sugerencia').textContent = fv.pctFijos >= 50
       ? `💡 Tus gastos fijos son ${fv.pctFijos}% del ingreso ${fv.sinIngresos ? 'de referencia' : 'real'} — más de la mitad ya está comprometido antes de gastar en variables.`
