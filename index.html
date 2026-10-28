@@ -1180,7 +1180,9 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
     <div style="margin-bottom:16px;padding:10px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted)" id="es-info-banner"></div>
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
       <div class="form-group"><label>Descripción</label><input type="text" id="es-desc"></div>
-      <div class="form-group"><label>Monto</label><input type="number" id="es-monto" placeholder="0"></div>
+      <div class="form-group"><label>Monto total</label><input type="number" id="es-monto-total" placeholder="0" oninput="calcMontoSuscDiv()"></div>
+      <div class="form-group"><label>÷ Casas (1 = solo vos)</label><input type="number" id="es-divisor" placeholder="1" min="1" value="1" oninput="calcMontoSuscDiv()"></div>
+      <div class="form-group"><label>Tu parte (calculada)</label><input type="number" id="es-monto" placeholder="0" readonly style="opacity:0.7"></div>
       <div class="form-group"><label>Moneda</label><select id="es-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
       <div class="form-group"><label>Medio de pago</label><select id="es-medio"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="es-notas" placeholder="Opcional"></div>
@@ -1844,8 +1846,10 @@ function renderSuscripciones() {
     const finLabel = g.fecha_fin_recurrencia
       ? `<span style="font-size:12px;color:var(--muted)">hasta ${g.fecha_fin_recurrencia.slice(0,7)}</span>` : '—';
     const montoFmt = g.moneda==='USD' ? fmtUSD(g.monto) : fmtARS(g.monto);
+    const divisorLabel = g.divisor > 1
+      ? ` <span style="font-size:11px;color:var(--muted);background:var(--surface2);padding:2px 6px;border-radius:99px">÷${g.divisor} (total ${g.moneda==='USD'?fmtUSD(g.monto_total):fmtARS(g.monto_total)})</span>` : '';
     return `<tr style="${!activa?'opacity:0.55':''}">
-      <td style="font-weight:500">${g.desc||g.descripcion||'—'}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}</td>
+      <td style="font-weight:500">${g.desc||g.descripcion||'—'}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${divisorLabel}</td>
       <td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}/mes</td>
       <td style="color:var(--muted)">${g.medio||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${g.notas||'—'}</td>
@@ -1861,12 +1865,22 @@ function renderSuscripciones() {
   }).join('');
 }
 
+function calcMontoSuscDiv() {
+  const total = parseFloat(document.getElementById('es-monto-total').value) || 0;
+  const div = Math.max(1, parseInt(document.getElementById('es-divisor').value) || 1);
+  document.getElementById('es-monto').value = div > 1 ? (total / div).toFixed(2) : (total || '');
+}
+
 function abrirEditSuscripcion(id) {
   const g = db.gastos.find(x => x.id === id);
   if (!g) return;
   document.getElementById('es-id').value = id;
   document.getElementById('es-desc').value = g.desc || g.descripcion || '';
-  document.getElementById('es-monto').value = g.monto;
+  const divisor = g.divisor || 1;
+  const montoTotal = g.monto_total || g.monto;
+  document.getElementById('es-monto-total').value = montoTotal;
+  document.getElementById('es-divisor').value = divisor;
+  document.getElementById('es-monto').value = divisor > 1 ? (montoTotal / divisor).toFixed(2) : montoTotal;
   document.getElementById('es-moneda').value = g.moneda || 'ARS';
   document.getElementById('es-medio').value = g.medio || 'efectivo';
   document.getElementById('es-notas').value = g.notas || '';
@@ -1880,7 +1894,9 @@ function abrirEditSuscripcion(id) {
 async function saveEditSuscripcion() {
   const id = document.getElementById('es-id').value;
   const desc = document.getElementById('es-desc').value.trim();
-  const monto = parseFloat(document.getElementById('es-monto').value);
+  const divisorRaw = Math.max(1, parseInt(document.getElementById('es-divisor').value) || 1);
+  const montoTotalRaw = parseFloat(document.getElementById('es-monto-total').value);
+  const monto = divisorRaw > 1 ? montoTotalRaw / divisorRaw : montoTotalRaw;
   const moneda = document.getElementById('es-moneda').value;
   const medio = document.getElementById('es-medio').value;
   const notas = document.getElementById('es-notas').value.trim();
@@ -1895,6 +1911,8 @@ async function saveEditSuscripcion() {
   const updates = {
     descripcion: desc,
     monto,
+    monto_total: divisorRaw > 1 ? montoTotalRaw : null,
+    divisor: divisorRaw > 1 ? divisorRaw : null,
     moneda,
     medio,
     notas,
