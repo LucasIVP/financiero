@@ -70,6 +70,31 @@
   .nav-user{font-size:12px;color:var(--muted);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis;}
   .nav-logout{padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12px;white-space:nowrap;}
   .nav-logout:hover{border-color:var(--red);color:var(--red);}
+  /* Bottom tab bar — solo en mobile */
+  .bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:90;background:var(--surface);border-top:1px solid var(--border);padding:0 0 env(safe-area-inset-bottom);height:calc(56px + env(safe-area-inset-bottom));}
+  .bottom-nav-items{display:flex;height:56px;}
+  .bottom-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;color:var(--muted);font-size:10px;cursor:pointer;padding:6px 4px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+  .bottom-nav-item.active{color:var(--accent);}
+  .bottom-nav-item .bni-icon{font-size:20px;line-height:1;}
+  /* Drawer "Más" */
+  .more-drawer-overlay{display:none;position:fixed;inset:0;z-index:95;background:rgba(0,0,0,0.5);}
+  .more-drawer-overlay.open{display:block;}
+  .more-drawer{position:fixed;bottom:calc(56px + env(safe-area-inset-bottom));left:0;right:0;background:var(--surface);border-top:1px solid var(--border);border-radius:16px 16px 0 0;z-index:96;padding:16px 0;transform:translateY(100%);transition:transform 0.22s ease;}
+  .more-drawer.open{transform:translateY(0);}
+  .more-drawer-item{display:flex;align-items:center;gap:14px;padding:13px 24px;font-size:15px;cursor:pointer;color:var(--text);}
+  .more-drawer-item:active{background:var(--surface2);}
+  .more-drawer-item span{font-size:20px;}
+  /* FAB */
+  .fab{display:none;position:fixed;right:20px;z-index:80;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;font-size:26px;line-height:1;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(108,99,255,0.4);-webkit-tap-highlight-color:transparent;touch-action:manipulation;align-items:center;justify-content:center;}
+  @media(max-width:700px){
+    .nav{display:none;}
+    .bottom-nav{display:block;}
+    .page{padding-bottom:calc(72px + env(safe-area-inset-bottom));}
+    #toast-container{bottom:calc(68px + env(safe-area-inset-bottom));}
+    .fab{display:flex;bottom:calc(68px + env(safe-area-inset-bottom));}
+    /* ocultar form inline de nuevo gasto en mobile */
+    #inline-nuevo-gasto{display:none;}
+  }
 
   .page{display:none;padding:24px max(24px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));max-width:1200px;margin:0 auto;}
   .page.active{display:block;}
@@ -181,14 +206,34 @@
   <button class="nav-logout" onclick="logout()">Salir</button>
 </nav>
 
+<!-- Bottom tab bar (mobile) -->
+<div class="more-drawer-overlay" id="more-drawer-overlay" onclick="closeMoreDrawer()"></div>
+<div class="more-drawer" id="more-drawer">
+  <div class="more-drawer-item" onclick="goTo('patrimonio');closeMoreDrawer()"><span>📊</span>Patrimonio y Análisis</div>
+  <div class="more-drawer-item" onclick="goTo('compartido');closeMoreDrawer()"><span>🏠</span>Compartido</div>
+  <div class="more-drawer-item" onclick="goTo('compras');renderCompras();closeMoreDrawer()"><span>🛒</span>Compras</div>
+  <div class="more-drawer-item" onclick="goTo('config');closeMoreDrawer()"><span>⚙️</span>Config</div>
+  <div class="more-drawer-item" onclick="toggleTheme();closeMoreDrawer()"><span id="more-theme-icon">☀️</span>Cambiar tema</div>
+  <div class="more-drawer-item" style="color:var(--red)" onclick="logout()"><span>🚪</span>Salir</div>
+</div>
+<nav class="bottom-nav" id="bottom-nav">
+  <div class="bottom-nav-items">
+    <button class="bottom-nav-item active" id="bni-dashboard" onclick="goTo('dashboard')"><span class="bni-icon">📊</span>Resumen</button>
+    <button class="bottom-nav-item" id="bni-gastos" onclick="goTo('gastos')"><span class="bni-icon">💸</span>Gastos</button>
+    <button class="bottom-nav-item" id="bni-ingresos" onclick="goTo('ingresos')"><span class="bni-icon">💵</span>Ingresos</button>
+    <button class="bottom-nav-item" id="bni-tarjetas" onclick="goTo('tarjetas')"><span class="bni-icon">💳</span>Tarjetas</button>
+    <button class="bottom-nav-item" id="bni-mas" onclick="openMoreDrawer()"><span class="bni-icon">☰</span>Más</button>
+  </div>
+</nav>
+
 <div id="page-dashboard" class="page active">
   <div class="section-header" style="margin-bottom:20px">
     <div><div class="section-title">Resumen del mes</div><div style="color:var(--muted);font-size:13px;margin-top:2px" id="dash-subtitle"></div></div>
     <div style="display:flex;gap:10px;align-items:center;">
       <span class="dolar-badge">USD $<span id="dolar-val">—</span></span>
       <div class="month-selector">
-        <select id="dash-month" onchange="renderDashboard()"></select>
-        <select id="dash-year" onchange="renderDashboard()"></select>
+        <select id="dash-month" onchange="onGlobalMesChange('dash-month','dash-year',renderDashboard)"></select>
+        <select id="dash-year" onchange="onGlobalMesChange('dash-month','dash-year',renderDashboard)"></select>
       </div>
     </div>
   </div>
@@ -239,10 +284,10 @@
         <option value="credito">Crédito</option>
         <option value="transferencia">Transferencia</option>
       </select>
-      <div class="month-selector"><select id="g-month" onchange="renderGastos()"></select><select id="g-year" onchange="renderGastos()"></select></div>
+      <div class="month-selector"><select id="g-month" onchange="onGlobalMesChange('g-month','g-year',renderGastos)"></select><select id="g-year" onchange="onGlobalMesChange('g-month','g-year',renderGastos)"></select></div>
     </div>
     <div id="gastos-atajos" style="margin-bottom:16px"></div>
-    <div class="card" style="margin-bottom:20px">
+    <div class="card" id="inline-nuevo-gasto" style="margin-bottom:20px">
       <div style="font-weight:600;margin-bottom:14px">Nuevo gasto</div>
       <div class="form-grid">
         <div class="form-group"><label>Fecha</label><input type="date" id="g-fecha"></div>
@@ -295,6 +340,7 @@
       <div class="section-header"><span style="font-weight:600" id="g-table-title">Lista de gastos</span><span id="g-total-badge" style="font-size:13px;color:var(--muted)"></span></div>
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th>Medio</th><th>Monto</th><th style="text-align:center">Pagado</th><th></th></tr></thead><tbody id="g-table-body"></tbody></table></div>
       <div id="g-empty" class="empty-state" style="display:none">No hay gastos este mes</div>
+      <div id="g-pagination" style="display:none;justify-content:center;align-items:center;gap:8px;padding-top:14px;flex-wrap:wrap"></div>
     </div>
   </div>
 
@@ -395,7 +441,7 @@
 <div id="page-ingresos" class="page">
   <div class="section-header">
     <div class="section-title">💵 Ingresos</div>
-    <div class="month-selector"><select id="i-month" onchange="renderIngresos()"></select><select id="i-year" onchange="renderIngresos()"></select></div>
+    <div class="month-selector"><select id="i-month" onchange="onGlobalMesChange('i-month','i-year',renderIngresos)"></select><select id="i-year" onchange="onGlobalMesChange('i-month','i-year',renderIngresos)"></select></div>
   </div>
   <div class="card" style="margin-bottom:20px">
     <div style="font-weight:600;margin-bottom:14px">Nuevo ingreso</div>
@@ -599,8 +645,8 @@
       <div style="color:var(--muted);font-size:13px;margin-top:2px" id="compartido-subtitle"></div>
     </div>
     <div class="month-selector">
-      <select id="comp-month" onchange="renderCompartido()"></select>
-      <select id="comp-year" onchange="renderCompartido()"></select>
+      <select id="comp-month" onchange="onGlobalMesChange('comp-month','comp-year',renderCompartido)"></select>
+      <select id="comp-year" onchange="onGlobalMesChange('comp-month','comp-year',renderCompartido)"></select>
     </div>
   </div>
 
@@ -1069,6 +1115,40 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
   </div>
 </div>
 
+<!-- FAB nuevo gasto (mobile) -->
+<button class="fab" id="fab-gasto" onclick="openModal('modal-nuevo-gasto')" title="Nuevo gasto">＋</button>
+
+<!-- Modal nuevo gasto (mobile FAB) -->
+<div class="modal-overlay" id="modal-nuevo-gasto">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">💸 Nuevo gasto</span><button class="modal-close" onclick="closeModal('modal-nuevo-gasto')">×</button></div>
+    <div id="modal-gasto-atajos" style="margin-bottom:12px"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Fecha</label><input type="date" id="gm-fecha"></div>
+      <div class="form-group"><label>Descripción</label><input type="text" id="gm-desc" placeholder="Ej: Supermercado"></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="gm-monto" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="gm-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Categoría</label><select id="gm-cat" onchange="onCatChangeGasto('gm')"></select></div>
+      <div class="form-group" id="gm-subcat-field" style="display:none"><label>Subcategoría</label><select id="gm-subcat"><option value="">— Sin subcategoría —</option></select></div>
+      <div class="form-group"><label>Tipo</label><select id="gm-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
+      <div class="form-group"><label>Medio de pago</label><select id="gm-medio" onchange="toggleCuotasFields('gm')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
+      <div class="form-group" id="gm-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="gm-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
+      <div class="form-group"><label>Notas</label><input type="text" id="gm-notas" placeholder="Opcional"></div>
+      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="gm-compartido" style="width:16px;height:16px;accent-color:var(--accent2)" onchange="toggleAportePareja('gm')"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
+      <div class="form-group" id="gm-aporte-pareja-field" style="display:none;grid-column:1/-1">
+        <label>¿Puso una parte tu pareja? <span style="color:var(--muted);font-weight:400">(opcional)</span></label>
+        <input type="number" id="gm-aporte-pareja" placeholder="Ej: 20000" min="0">
+      </div>
+      <div class="form-group" id="gm-limite-check" style="display:none;grid-column:1/-1"></div>
+      <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="gm-pagado" checked style="width:16px;height:16px;accent-color:var(--accent)"> <span style="font-weight:600">✅ Ya pagado</span></label></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-primary" id="btn-add-gasto-modal" onclick="addGastoModal()">+ Agregar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-nuevo-gasto')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODALS -->
 
 <div class="modal-overlay" id="modal-edit-gasto">
@@ -1533,10 +1613,33 @@ function fmtUSD(n){return 'USD $'+n.toLocaleString('es-AR',{minimumFractionDigit
 function toARS(amount,currency){return currency==='USD'?amount*(db.config.dolar||1):amount;}
 function currentYM(){const n=new Date();return{month:n.getMonth(),year:n.getFullYear()};}
 function filterByMonth(list,month,year){return list.filter(x=>{const d=new Date(x.fecha+'T12:00:00');return d.getMonth()===month&&d.getFullYear()===year;});}
+// Mes global compartido entre dashboard / gastos / ingresos / compartido
+const globalMes = (() => { const {month,year}=currentYM(); return {month,year}; })();
+const GLOBAL_MES_PAIRS = [['dash-month','dash-year'],['g-month','g-year'],['i-month','i-year'],['comp-month','comp-year']];
+function syncGlobalMes(month, year) {
+  globalMes.month = month; globalMes.year = year;
+  GLOBAL_MES_PAIRS.forEach(([mid,yid]) => {
+    const ms=document.getElementById(mid), ys=document.getElementById(yid);
+    if(ms) ms.value = month;
+    if(ys) ys.value = year;
+  });
+}
+function onGlobalMesChange(mid, yid, renderFn) {
+  const ms=document.getElementById(mid), ys=document.getElementById(yid);
+  if(!ms||!ys) return;
+  const month=parseInt(ms.value), year=parseInt(ys.value);
+  syncGlobalMes(month, year);
+  // re-render all visible tabs that share the global month
+  try{renderDashboard();}catch(e){}
+  try{renderGastos();}catch(e){}
+  try{renderIngresos();}catch(e){}
+  // renderFn is the primary caller; already covered above
+}
 function fillMonthYearSelects(mid,yid){
   const ms=document.getElementById(mid),ys=document.getElementById(yid);
   if(!ms||!ys)return;
-  const{month,year}=currentYM();
+  const isGlobal=GLOBAL_MES_PAIRS.some(([m,y])=>m===mid&&y===yid);
+  const{month,year}=isGlobal?globalMes:currentYM();
   ms.innerHTML=MONTHS.map((m,i)=>`<option value="${i}" ${i===month?'selected':''}>${m}</option>`).join('');
   const years=[];for(let y=year-3;y<=year+1;y++)years.push(y);
   ys.innerHTML=years.map(y=>`<option value="${y}" ${y===year?'selected':''}>${y}</option>`).join('');
@@ -1707,9 +1810,18 @@ function goTo(page){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
+  // sync bottom nav
+  const bniPages=['dashboard','gastos','ingresos','tarjetas'];
+  document.querySelectorAll('.bottom-nav-item').forEach(b=>b.classList.remove('active'));
+  const bni=document.getElementById('bni-'+page);
+  if(bni)bni.classList.add('active');
+  else document.getElementById('bni-mas')?.classList.add('active');
   const renders={dashboard:renderDashboard,gastos:()=>{renderAtajosRapidos();renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(renderCompartido),config:renderConfig,compras:renderCompras};
   if(renders[page])renders[page]();
 }
+function openMoreDrawer(){document.getElementById('more-drawer').classList.add('open');document.getElementById('more-drawer-overlay').classList.add('open');}
+function closeMoreDrawer(){document.getElementById('more-drawer').classList.remove('open');document.getElementById('more-drawer-overlay').classList.remove('open');}
+
 function innerTab(section,tab,evt){
   document.querySelectorAll(`#page-${section} .inner-section`).forEach(s=>s.classList.remove('active'));
   document.querySelectorAll(`#page-${section} .inner-tab`).forEach(b=>b.classList.remove('active'));
@@ -1726,7 +1838,16 @@ function irAGrupalesVinculados(){
   if(btn)btn.classList.add('active');
   renderGrupales();
 }
-function openModal(id){document.getElementById(id).classList.add('open');}
+function openModal(id){
+  document.getElementById(id).classList.add('open');
+  if(id==='modal-nuevo-gasto'){
+    const f=document.getElementById('gm-fecha');
+    if(f&&!f.value)f.value=new Date().toISOString().slice(0,10);
+    // populate atajos en el modal
+    const atDiv=document.getElementById('modal-gasto-atajos');
+    if(atDiv)atDiv.innerHTML=document.getElementById('gastos-atajos')?.innerHTML||'';
+  }
+}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
 function toggleRecurrenteOpts(prefix) {
@@ -2077,6 +2198,28 @@ async function addGasto(){
   }
   await refreshGastosCompleto();clearGastoForm();toggleCuotasFields('g');renderGastos();renderDashboard();
 }
+async function addGastoModal(){
+  const fecha=document.getElementById('gm-fecha').value,desc=document.getElementById('gm-desc').value.trim(),monto=parseFloat(document.getElementById('gm-monto').value),moneda=document.getElementById('gm-moneda').value,cat=document.getElementById('gm-cat').value,tipo=document.getElementById('gm-tipo').value,medio=document.getElementById('gm-medio').value,notas=document.getElementById('gm-notas').value.trim();
+  if(!fecha||!desc||isNaN(monto)||monto<=0){showToast('Completá fecha, descripción y monto.','error');return;}
+  const esPagado=!!document.getElementById('gm-pagado')?.checked;
+  const esComp=!!document.getElementById('gm-compartido')?.checked;
+  const aportePareja=esComp?(parseFloat(document.getElementById('gm-aporte-pareja')?.value)||null):null;
+  const subcatId=document.getElementById('gm-subcat')?.value||null;
+  setBtnLoading('btn-add-gasto-modal',true);
+  const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado,aporte_pareja:esComp?aportePareja:null};
+  const{error}=await sb.from('gastos').insert(row);
+  setBtnLoading('btn-add-gasto-modal',false);
+  if(error){showToast(error.message,'error');return;}
+  showToast('Gasto agregado ✓');
+  closeModal('modal-nuevo-gasto');
+  // reset modal form
+  document.getElementById('gm-desc').value='';document.getElementById('gm-monto').value='';document.getElementById('gm-notas').value='';
+  document.getElementById('gm-medio').value='efectivo';document.getElementById('gm-fecha').value=new Date().toISOString().slice(0,10);
+  const cb=document.getElementById('gm-compartido');if(cb)cb.checked=false;
+  const pcb=document.getElementById('gm-pagado');if(pcb)pcb.checked=true;
+  toggleAportePareja('gm');
+  await refreshGastosCompleto();renderGastos();renderDashboard();
+}
 function clearGastoForm(){
   document.getElementById('g-desc').value='';
   document.getElementById('g-monto').value='';
@@ -2240,7 +2383,16 @@ async function togglePagadoParte(id, quien, checked, virtualFecha) {
   if (document.getElementById('gastos-gastos-historial')?.classList.contains('active')) renderHistorial();
   if (document.getElementById('page-compartido')?.classList.contains('active')) renderCompartido();
 }
-function renderGastos(){
+let _gastosPagina = 0;
+let _gastosFiltroActivo = '';
+const GASTOS_POR_PAG = 25;
+function renderGastos(pagina){
+  if(pagina!==undefined){_gastosPagina=pagina;}
+  else{
+    // reset página si cambiaron filtros o mes
+    const clave=(document.getElementById('g-cat-filter')?.value||'')+(document.getElementById('g-tipo-filter')?.value||'')+(document.getElementById('g-medio-filter')?.value||'')+(document.getElementById('g-month')?.value||'')+(document.getElementById('g-year')?.value||'');
+    if(clave!==_gastosFiltroActivo){_gastosPagina=0;_gastosFiltroActivo=clave;}
+  }
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const catFilter=document.getElementById('g-cat-filter')?.value||'';
   const tipoFilter=document.getElementById('g-tipo-filter')?.value||'';
@@ -2267,12 +2419,26 @@ function renderGastos(){
       <div class="card"><div class="card-title">Pendiente</div><div class="card-value" style="color:var(--warn)">${fmtARS(totalPendienteG)}</div><div class="card-sub">${gastosPendientes.length} sin pagar</div></div>`;
   }
   const tbody=document.getElementById('g-table-body'),empty=document.getElementById('g-empty');
-  if(gastos.length===0){tbody.innerHTML='';empty.style.display='block';return;}
+  if(gastos.length===0){tbody.innerHTML='';empty.style.display='block';const pg=document.getElementById('g-pagination');if(pg)pg.style.display='none';return;}
   empty.style.display='none';
+  // paginación
+  const totalPag=Math.ceil(gastos.length/GASTOS_POR_PAG);
+  if(_gastosPagina>=totalPag)_gastosPagina=totalPag-1;
+  const gastosPag=gastos.slice(_gastosPagina*GASTOS_POR_PAG,(_gastosPagina+1)*GASTOS_POR_PAG);
+  const pgDiv=document.getElementById('g-pagination');
+  if(pgDiv){
+    if(totalPag<=1){pgDiv.style.display='none';}
+    else{
+      pgDiv.style.display='flex';
+      pgDiv.innerHTML=`<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px" ${_gastosPagina===0?'disabled':''} onclick="renderGastos(${_gastosPagina-1})">← Ant</button>`
+        +Array.from({length:totalPag},(_,i)=>`<button class="btn ${i===_gastosPagina?'btn-primary':'btn-ghost'}" style="padding:6px 10px;font-size:12px" onclick="renderGastos(${i})">${i+1}</button>`).join('')
+        +`<button class="btn btn-ghost" style="padding:6px 12px;font-size:12px" ${_gastosPagina===totalPag-1?'disabled':''} onclick="renderGastos(${_gastosPagina+1})">Sig →</button>`;
+    }
+  }
   const tc={regular:'#6c63ff',inusual:'#ffb347',ahorro:'#00d4aa'};
   const{month:gMonth,year:gYear}=getSelectedMonthYear('g-month','g-year');
   const ymStrMes=`${gYear}-${String(gMonth+1).padStart(2,'0')}`;
-  tbody.innerHTML=gastos.map(g=>{
+  tbody.innerHTML=gastosPag.map(g=>{
     const cat=db.categorias.find(c=>c.name===g.cat)||{emoji:'📄',name:g.cat||'Sin cat.'};
     const subcat=g.subcat_id?db.subcategorias.find(s=>s.id===g.subcat_id):null;
     const montoMostrar=g.es_compartido?gastoEfectivo(g,gMonth,gYear):toARS(g.monto,g.moneda);
@@ -2380,6 +2546,9 @@ function populateTarjetaSelects() {
   const ptSel = document.getElementById('pt-tarjeta-id');
   if (ptSel) ptSel.innerHTML = '<option value="">— Sin asignar —</option>' +
     (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  const gmSel = document.getElementById('gm-tarjeta-id');
+  if (gmSel) gmSel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    (db.tarjetas || []).map(t => `<option value="${t.id}">${t.nombre} (${t.banco || t.red})</option>`).join('');
 }
 
 function renderTarjetas() {
@@ -3331,7 +3500,7 @@ function populateCatSelects(){
     el.innerHTML='<option value="">Todas las categorías</option>'+db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');
     if(current)el.value=current;
   });
-  ['g-cat','c-cat','comp-cat','gg-cat'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');});
+  ['g-cat','c-cat','comp-cat','gg-cat','gm-cat'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=db.categorias.map(c=>`<option value="${c.name}">${c.emoji} ${c.name}</option>`).join('');});
   // Re-check recurrente visibility in case category list changed
   onCatChangeGasto();
 }
@@ -3937,6 +4106,8 @@ function applyTheme(t){
   document.documentElement.setAttribute('data-theme',isLight?'light':'');
   const btn=document.getElementById('theme-toggle');
   if(btn)btn.textContent=isLight?'🌙':'☀️';
+  const moreIcon=document.getElementById('more-theme-icon');
+  if(moreIcon)moreIcon.textContent=isLight?'🌙':'☀️';
 }
 function toggleTheme(){
   const next=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';
@@ -5803,16 +5974,16 @@ function populateSubcatSelect(selectId, catName, currentValue) {
   ).join('');
 }
 
-function onCatChangeGasto() {
-  const cat = document.getElementById('g-cat')?.value || '';
-  // Recurrente: mostrar para cualquier categoría (se aplica solo a gastos tipo Regular)
-  const recField = document.getElementById('g-recurrente-field');
-  if (recField) recField.style.display = 'block';
-  // Subcategorías
-  const subcatField = document.getElementById('g-subcat-field');
+function onCatChangeGasto(prefix='g') {
+  const cat = document.getElementById(prefix+'-cat')?.value || '';
+  if (prefix === 'g') {
+    const recField = document.getElementById('g-recurrente-field');
+    if (recField) recField.style.display = 'block';
+  }
+  const subcatField = document.getElementById(prefix+'-subcat-field');
   const subs = getSubcatsDe(cat);
   if (subcatField) subcatField.style.display = subs.length > 0 ? 'block' : 'none';
-  populateSubcatSelect('g-subcat', cat, '');
+  populateSubcatSelect(prefix+'-subcat', cat, '');
 }
 
 function onEgCatChange() {
