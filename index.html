@@ -114,6 +114,16 @@
     #page-compras .table-wrap td:nth-child(6){display:none;}
     /* ocultar form inline de agregar ítem en compras en mobile */
     #inline-add-compra{display:none;}
+    /* Inner-tabs: scroll horizontal en lugar de wrap */
+    .inner-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none;}
+    .inner-tabs::-webkit-scrollbar{display:none;}
+    .inner-tab{flex-shrink:0;white-space:nowrap;}
+    /* Dashboard header: ocultar badge USD (info secundaria en mobile) */
+    #page-dashboard .dolar-badge{display:none;}
+    /* Gastos filtros: 2 columnas */
+    #gastos-gastos-mes>div:first-child{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    #gastos-gastos-mes>div:first-child .month-selector{grid-column:1/-1;justify-content:center;}
+    #gastos-gastos-mes>div:first-child select{width:100%;box-sizing:border-box;}
   }
 
   .page{display:none;padding:24px max(24px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));max-width:1200px;margin:0 auto;}
