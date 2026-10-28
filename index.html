@@ -94,6 +94,15 @@
     .fab{display:flex;bottom:calc(68px + env(safe-area-inset-bottom));}
     /* ocultar form inline de nuevo gasto en mobile */
     #inline-nuevo-gasto{display:none;}
+    /* tabla gastos mobile: ocultar Fecha(1), Tipo(4), Medio(5) */
+    #page-gastos .table-wrap th:nth-child(1),
+    #page-gastos .table-wrap td:nth-child(1),
+    #page-gastos .table-wrap th:nth-child(4),
+    #page-gastos .table-wrap td:nth-child(4),
+    #page-gastos .table-wrap th:nth-child(5),
+    #page-gastos .table-wrap td:nth-child(5){display:none;}
+    /* meter la fecha como línea pequeña debajo de la descripción */
+    #page-gastos .table-wrap td:nth-child(2)::after{content:attr(data-fecha);display:block;font-size:10px;color:var(--muted);margin-top:2px;}
   }
 
   .page{display:none;padding:24px max(24px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));max-width:1200px;margin:0 auto;}
@@ -2456,7 +2465,7 @@ function renderGastos(pagina){
     const pagadoCell=(g.user_id===currentUser.id||g.es_compartido===true)
       ?`<input type="checkbox" ${estaPagado?'checked':''} onchange="${esCompMi?`togglePagadoParte('${g.id}','${miQuienMes}',this.checked${g._virtual?`,'${g.fecha}'`:''})`:`togglePagado('${g.id}', this.checked${g._virtual?`, '${g.fecha}'`:''})`}" style="width:16px;height:16px;accent-color:var(--accent)" title="${estaPagado?(esCompMi?'Marcar tu parte como pendiente':'Marcar como pendiente'):(esCompMi?'Marcar tu parte como pagada':'Marcar como pagado')}">`
       :`<span style="font-size:11px;color:var(--muted)">${estaPagado?'✅':'⏳'}</span>`;
-    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}${g.fecha_compra&&g.fecha_compra!==g.fecha?` · comprado el ${g.fecha_compra}`:''}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}${(g.medio==='credito'&&g.tarjeta_id)?` <span style="font-size:11px;color:var(--accent)">💳 ${(db.tarjetas.find(t=>t.id===g.tarjeta_id)||{}).nombre||'?'}</span>`:''}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
+    return`<tr style="${estaPagado?'':'opacity:0.85'}"><td style="color:var(--muted)">${g.fecha}</td><td data-fecha="${g.fecha}"><div style="font-weight:500">${(g.desc||g.descripcion||'').split(' (parte grupal')[0]}${recBadge}${g.es_compartido?' <span style="font-size:11px;color:var(--accent2)">💑</span>':''}${esGrupal?' <span style="font-size:11px;color:var(--warn)" title="Gasto grupal">🤝</span>':''}${pendBadge}</div>${g.notas?`<div style="font-size:11px;color:var(--muted)">${g.notas}</div>`:''}${g.cuota_num?`<div style="font-size:11px;color:var(--muted)">cuota ${String(g.cuota_num).padStart(2,'0')}/${String(g.cuota_total).padStart(2,'0')}${g.fecha_compra&&g.fecha_compra!==g.fecha?` · comprado el ${g.fecha_compra}`:''}</div>`:''}</td><td><span class="tag">${cat.emoji} ${cat.name}</span>${subcat?`<div style="font-size:11px;color:var(--muted);margin-top:2px">&nbsp;↳ ${subcat.emoji||''} ${subcat.nombre}</div>`:''}</td><td><span class="badge" style="background:${tc[g.tipo]||'#6c63ff'}22;color:${tc[g.tipo]||'#6c63ff'}">${g.tipo}</span></td><td style="color:var(--muted)">${g.medio}${(g.medio==='credito'&&g.tarjeta_id)?` <span style="font-size:11px;color:var(--accent)">💳 ${(db.tarjetas.find(t=>t.id===g.tarjeta_id)||{}).nombre||'?'}</span>`:''}</td><td class="amount-negative" style="font-weight:600;white-space:nowrap">${montoFmt}</td><td style="text-align:center">${pagadoCell}</td><td style="white-space:nowrap">${acciones}</td></tr>`;
   }).join('');
 }
 
