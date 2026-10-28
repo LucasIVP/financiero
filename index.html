@@ -91,7 +91,7 @@
     .bottom-nav{display:block;}
     .page{padding-bottom:calc(72px + env(safe-area-inset-bottom));}
     #toast-container{bottom:calc(68px + env(safe-area-inset-bottom));}
-    .fab{display:flex;bottom:calc(68px + env(safe-area-inset-bottom));}
+    .fab{bottom:calc(68px + env(safe-area-inset-bottom));right:20px;}
     /* ocultar form inline de nuevo gasto en mobile */
     #inline-nuevo-gasto{display:none;}
     /* tabla gastos mobile: ocultar Fecha(1), Tipo(4), Medio(5) */
@@ -103,6 +103,17 @@
     #page-gastos .table-wrap td:nth-child(5){display:none;}
     /* meter la fecha como línea pequeña debajo de la descripción */
     #page-gastos .table-wrap td:nth-child(2)::after{content:attr(data-fecha);display:block;font-size:10px;color:var(--muted);margin-top:2px;}
+    /* tabla compras mobile: ocultar Lugar(3), Referencia(4), Final pagado(5), Fecha(6) */
+    #page-compras .table-wrap th:nth-child(3),
+    #page-compras .table-wrap td:nth-child(3),
+    #page-compras .table-wrap th:nth-child(4),
+    #page-compras .table-wrap td:nth-child(4),
+    #page-compras .table-wrap th:nth-child(5),
+    #page-compras .table-wrap td:nth-child(5),
+    #page-compras .table-wrap th:nth-child(6),
+    #page-compras .table-wrap td:nth-child(6){display:none;}
+    /* ocultar form inline de agregar ítem en compras en mobile */
+    #inline-add-compra{display:none;}
   }
 
   .page{display:none;padding:24px max(24px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));max-width:1200px;margin:0 auto;}
@@ -1060,7 +1071,7 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
   <!-- Tab: Lista actual -->
   <div id="compras-compras-lista" class="inner-section active">
     <div id="compras-listas-bar" style="margin-bottom:16px"></div>
-    <div class="card" style="margin-bottom:16px">
+    <div class="card" id="inline-add-compra" style="margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:14px">Agregar ítem</div>
       <div class="form-grid">
         <div class="form-group"><label>Nombre</label><input type="text" id="ci-nombre" placeholder="Ej: Leche"></div>
@@ -1124,8 +1135,8 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
   </div>
 </div>
 
-<!-- FAB nuevo gasto (mobile) -->
-<button class="fab" id="fab-gasto" onclick="openModal('modal-nuevo-gasto')" title="Nuevo gasto">＋</button>
+<!-- FAB (mobile) — contexto: gastos o compras -->
+<button class="fab" id="fab-main" onclick="fabAction()" title="Agregar">＋</button>
 
 <!-- Modal nuevo gasto (mobile FAB) -->
 <div class="modal-overlay" id="modal-nuevo-gasto">
@@ -1154,6 +1165,24 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
     <div style="margin-top:14px;display:flex;gap:10px">
       <button class="btn btn-primary" id="btn-add-gasto-modal" onclick="addGastoModal()">+ Agregar</button>
       <button class="btn btn-ghost" onclick="closeModal('modal-nuevo-gasto')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal quick-add ítem compra (mobile FAB) -->
+<div class="modal-overlay" id="modal-nuevo-compra-item">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">🛒 Nuevo ítem</span><button class="modal-close" onclick="closeModal('modal-nuevo-compra-item')">×</button></div>
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1"><label>Nombre</label><input type="text" id="cim-nombre" placeholder="Ej: Leche" autofocus></div>
+      <div class="form-group"><label>Cantidad</label><input type="number" id="cim-cantidad" placeholder="1" min="1" value="1"></div>
+      <div class="form-group"><label>Tema</label><select id="cim-tema"><option value="General">General</option></select></div>
+      <div class="form-group"><label>Agregar a</label><select id="cim-destino"></select></div>
+      <div class="form-group"><label>Precio ref.</label><input type="number" id="cim-precio" placeholder="0" min="0"></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-primary" id="btn-add-compra-modal" onclick="addCompraItemModal()">+ Agregar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-nuevo-compra-item')">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1820,11 +1849,14 @@ function goTo(page){
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'"))b.classList.add('active');});
   // sync bottom nav
-  const bniPages=['dashboard','gastos','ingresos','tarjetas'];
   document.querySelectorAll('.bottom-nav-item').forEach(b=>b.classList.remove('active'));
   const bni=document.getElementById('bni-'+page);
   if(bni)bni.classList.add('active');
   else document.getElementById('bni-mas')?.classList.add('active');
+  // FAB: solo en gastos y compras
+  _fabPage=page;
+  const fab=document.getElementById('fab-main');
+  if(fab)fab.style.display=(page==='gastos'||page==='compras')?'flex':'none';
   const renders={dashboard:renderDashboard,gastos:()=>{renderAtajosRapidos();renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(renderCompartido),config:renderConfig,compras:renderCompras};
   if(renders[page])renders[page]();
 }
@@ -2229,6 +2261,87 @@ async function addGastoModal(){
   toggleAportePareja('gm');
   await refreshGastosCompleto();renderGastos();renderDashboard();
 }
+// FAB context-aware: sabe en qué tab está y actúa distinto
+let _fabPage = 'gastos';
+function fabAction(){
+  if(_fabPage==='compras') openFabCompras();
+  else openModal('modal-nuevo-gasto');
+}
+function openFabCompras(){
+  // Poblar selects del modal con los mismos datos que el form inline
+  const temasSel=document.getElementById('ci-tema'), cimTema=document.getElementById('cim-tema');
+  if(temasSel&&cimTema)cimTema.innerHTML=temasSel.innerHTML;
+  const destSel=document.getElementById('ci-destino'), cimDest=document.getElementById('cim-destino');
+  if(destSel&&cimDest)cimDest.innerHTML=destSel.innerHTML;
+  openModal('modal-nuevo-compra-item');
+  setTimeout(()=>document.getElementById('cim-nombre')?.focus(),100);
+}
+async function addCompraItemModal(){
+  const nombre=document.getElementById('cim-nombre')?.value.trim()||'';
+  if(!nombre){showToast('Ingresá el nombre del ítem','error');return;}
+  const tema=document.getElementById('cim-tema')?.value||'General';
+  const cantidad=parseInt(document.getElementById('cim-cantidad')?.value)||1;
+  const precio=parseFloat(document.getElementById('cim-precio')?.value)||null;
+  const listaId=document.getElementById('cim-destino')?.value||null;
+  const listaDestino=listaId?db.comprasListas.find(l=>l.id===listaId):null;
+  const esCompartida=listaDestino?.es_compartida||false;
+  const mes=new Date().toISOString().slice(0,7);
+  setBtnLoading('btn-add-compra-modal',true);
+  const{data,error}=await sb.from('compras_items').insert({
+    user_id:currentUser.id,nombre,tema,cantidad,precio_estimado:precio,notas:'',mes_referencia:mes,comprado:false,
+    promo:null,promo_extra:null,lugar:null,es_compartida:esCompartida,lista_id:listaId||null
+  }).select().single();
+  setBtnLoading('btn-add-compra-modal',false);
+  if(error){showToast(error.message,'error');return;}
+  db.comprasItems.unshift(data);
+  closeModal('modal-nuevo-compra-item');
+  document.getElementById('cim-nombre').value='';
+  document.getElementById('cim-cantidad').value='1';
+  document.getElementById('cim-precio').value='';
+  renderCompras();
+  showToast('Ítem agregado ✓');
+}
+
+// FAB draggable: hold & drag para reposicionar, guarda en localStorage
+(function initFabDrag(){
+  function setup(){
+    const fab=document.getElementById('fab-main');
+    if(!fab)return;
+    // restaurar posición guardada
+    try{
+      const pos=JSON.parse(localStorage.getItem('fabPos')||'null');
+      if(pos){fab.style.right='auto';fab.style.left=pos.left+'px';fab.style.bottom=pos.bottom+'px';}
+    }catch(e){}
+    let dragging=false,startX,startY,startLeft,startBottom,moved=false;
+    fab.addEventListener('touchstart',e=>{
+      const t=e.touches[0];
+      const r=fab.getBoundingClientRect();
+      startX=t.clientX;startY=t.clientY;
+      startLeft=r.left;startBottom=window.innerHeight-r.bottom;
+      dragging=true;moved=false;
+    },{passive:true});
+    fab.addEventListener('touchmove',e=>{
+      if(!dragging)return;
+      const t=e.touches[0];
+      const dx=t.clientX-startX,dy=t.clientY-startY;
+      if(Math.abs(dx)>5||Math.abs(dy)>5)moved=true;
+      if(!moved)return;
+      e.preventDefault();
+      const newLeft=Math.max(0,Math.min(window.innerWidth-56,startLeft+dx));
+      const newBottom=Math.max(68,Math.min(window.innerHeight-56,startBottom-dy));
+      fab.style.right='auto';fab.style.left=newLeft+'px';fab.style.bottom=newBottom+'px';
+    },{passive:false});
+    fab.addEventListener('touchend',()=>{
+      if(moved){
+        try{localStorage.setItem('fabPos',JSON.stringify({left:parseInt(fab.style.left),bottom:parseInt(fab.style.bottom)}));}catch(e){}
+      }
+      dragging=false;
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setup);
+  else setup();
+})();
+
 function clearGastoForm(){
   document.getElementById('g-desc').value='';
   document.getElementById('g-monto').value='';
