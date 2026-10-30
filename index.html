@@ -300,6 +300,7 @@
   <!-- Tab: Mes -->
   <div id="gastos-gastos-mes" class="inner-section active">
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="g-search" type="search" placeholder="Buscar descripción..." oninput="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none;min-width:180px">
       <select id="g-cat-filter" onchange="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todas las categorías</option></select>
       <select id="g-tipo-filter" onchange="renderGastos()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none">
         <option value="">Todos los tipos</option>
@@ -2522,18 +2523,20 @@ function renderGastos(pagina){
   if(pagina!==undefined){_gastosPagina=pagina;}
   else{
     // reset página si cambiaron filtros o mes
-    const clave=(document.getElementById('g-cat-filter')?.value||'')+(document.getElementById('g-tipo-filter')?.value||'')+(document.getElementById('g-medio-filter')?.value||'')+(document.getElementById('g-month')?.value||'')+(document.getElementById('g-year')?.value||'');
+    const clave=(document.getElementById('g-cat-filter')?.value||'')+(document.getElementById('g-tipo-filter')?.value||'')+(document.getElementById('g-medio-filter')?.value||'')+(document.getElementById('g-search')?.value||'')+(document.getElementById('g-month')?.value||'')+(document.getElementById('g-year')?.value||'');
     if(clave!==_gastosFiltroActivo){_gastosPagina=0;_gastosFiltroActivo=clave;}
   }
   const{month,year}=getSelectedMonthYear('g-month','g-year');
   const catFilter=document.getElementById('g-cat-filter')?.value||'';
   const tipoFilter=document.getElementById('g-tipo-filter')?.value||'';
   const medioFilter=document.getElementById('g-medio-filter')?.value||'';
+  const searchFilter=(document.getElementById('g-search')?.value||'').trim().toLowerCase();
   // Combinar gastos reales + suscripciones virtuales del mes
   let gastos=getGastosConSuscripciones(month,year).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   if(catFilter) gastos=gastos.filter(g=>g.cat===catFilter);
   if(tipoFilter) gastos=gastos.filter(g=>g.tipo===tipoFilter);
   if(medioFilter) gastos=gastos.filter(g=>g.medio===medioFilter);
+  if(searchFilter) gastos=gastos.filter(g=>(g.desc||g.descripcion||'').toLowerCase().includes(searchFilter));
   document.getElementById('g-table-title').textContent=`Gastos — ${MONTHS[month]} ${year}`;
   const total=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
   document.getElementById('g-total-badge').textContent=gastos.length>0?`Total: ${fmtARS(total)}`:'';
