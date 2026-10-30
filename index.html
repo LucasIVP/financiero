@@ -412,6 +412,9 @@
             <option value="transferencia">Transferencia</option>
           </select>
         </div>
+        <div class="form-group"><label>Buscar descripción</label>
+          <input id="h-search" type="search" placeholder="Buscar..." style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;min-width:160px">
+        </div>
         <button class="btn btn-primary" onclick="renderHistorial()">Ver historial</button>
       </div>
     </div>
@@ -1114,6 +1117,7 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <input id="ci-search" type="search" placeholder="Buscar ítem..." oninput="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none;min-width:160px">
       <select id="ci-filter-mes" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"></select>
       <select id="ci-filter-tema" onchange="renderCompras()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;outline:none"><option value="">Todos los temas</option></select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" id="ci-filter-pendientes" onchange="renderCompras()" style="accent-color:var(--accent)"> Solo pendientes</label>
@@ -3267,12 +3271,14 @@ function renderHistorial() {
   const catFilterH = document.getElementById('h-cat-filter')?.value||'';
   const tipoFilterH = document.getElementById('h-tipo-filter')?.value||'';
   const medioFilterH = document.getElementById('h-medio-filter')?.value||'';
+  const searchFilterH = (document.getElementById('h-search')?.value||'').trim().toLowerCase();
   const gastos = db.gastos.filter(g => {
     const d = new Date(g.fecha + 'T12:00:00');
     return d >= desdeDate && d <= hastaDate
       && (!catFilterH || g.cat === catFilterH)
       && (!tipoFilterH || g.tipo === tipoFilterH)
-      && (!medioFilterH || g.medio === medioFilterH);
+      && (!medioFilterH || g.medio === medioFilterH)
+      && (!searchFilterH || (g.desc||g.descripcion||'').toLowerCase().includes(searchFilterH));
   }).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   document.getElementById('h-table-title').textContent =
@@ -6882,6 +6888,7 @@ function renderCompras() {
   const mesFilter = document.getElementById('ci-filter-mes')?.value || '';
   const temaFilter = document.getElementById('ci-filter-tema')?.value || '';
   const soloPendientes = document.getElementById('ci-filter-pendientes')?.checked || false;
+  const searchFilterC = (document.getElementById('ci-search')?.value||'').trim().toLowerCase();
 
   // Listas abiertas primero: todo lo demás (KPIs, tablas) se limita a backlog + estas listas.
   // Los ítems de listas ya cerradas/finalizadas quedan fuera de "Lista actual" — viven en
@@ -6894,6 +6901,7 @@ function renderCompras() {
   if (mesFilter) items = items.filter(x => x.mes_referencia === mesFilter);
   if (temaFilter) items = items.filter(x => x.tema === temaFilter);
   if (soloPendientes) items = items.filter(x => !x.comprado);
+  if (searchFilterC) items = items.filter(x => (x.nombre||'').toLowerCase().includes(searchFilterC));
 
   const pendientes = items.filter(x => !x.comprado).length;
   const comprados = items.filter(x => x.comprado).length;
