@@ -1168,6 +1168,17 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
       <div class="form-group"><label>Tipo</label><select id="gm-tipo"><option value="regular">Regular</option><option value="inusual">Inusual</option><option value="ahorro">Ahorro</option></select></div>
       <div class="form-group"><label>Medio de pago</label><select id="gm-medio" onchange="toggleCuotasFields('gm')"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option></select></div>
       <div class="form-group" id="gm-tarjeta-field" style="display:none"><label>Tarjeta</label><select id="gm-tarjeta-id"><option value="">— Seleccionar —</option></select></div>
+      <div class="form-group" id="gm-cuotas-fields" style="display:none;grid-column:1/-1">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px">
+          <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:8px">💳 Cuotas</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div class="form-group"><label>Cantidad</label><input type="number" id="gm-ncuotas" placeholder="12" min="1" max="60" value="1"></div>
+            <div class="form-group"><label>Mes inicio</label><select id="gm-cuota-mes"></select></div>
+            <div class="form-group"><label>Año</label><select id="gm-cuota-anio"></select></div>
+          </div>
+          <div id="gm-cuota-preview" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+        </div>
+      </div>
       <div class="form-group"><label>Notas</label><input type="text" id="gm-notas" placeholder="Opcional"></div>
       <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="gm-compartido" style="width:16px;height:16px;accent-color:var(--accent2)" onchange="toggleAportePareja('gm')"> <span style="color:var(--accent2);font-weight:600">💑 Gasto compartido</span></label></div>
       <div class="form-group" id="gm-aporte-pareja-field" style="display:none;grid-column:1/-1">
@@ -2169,11 +2180,8 @@ function toggleCuotasFields(prefix) {
   } else {
     fields.style.display = 'none';
   }
-  // Show tarjeta selector only for credito in gastos individuales
-  if (prefix === 'g') {
-    const tcField = document.getElementById('g-tarjeta-field');
-    if (tcField) tcField.style.display = medio === 'credito' ? 'flex' : 'none';
-  }
+  const tcField = document.getElementById(prefix+'-tarjeta-field');
+  if (tcField) tcField.style.display = medio === 'credito' ? 'flex' : 'none';
 }
 
 function fillCuotaMesAnio(prefix) {
@@ -2195,7 +2203,7 @@ function fillCuotaMesAnio(prefix) {
 }
 
 function updateCuotaPreview(prefix) {
-  const montoId = prefix === 'comp' ? 'comp-monto' : 'g-monto';
+  const montoId = prefix+'-monto';
   const monto = parseFloat(document.getElementById(montoId).value) || 0;
   const n = parseInt(document.getElementById(prefix+'-ncuotas').value) || 1;
   const mes = parseInt(document.getElementById(prefix+'-cuota-mes').value);
@@ -2261,16 +2269,38 @@ async function addGastoModal(){
   const esComp=!!document.getElementById('gm-compartido')?.checked;
   const aportePareja=esComp?(parseFloat(document.getElementById('gm-aporte-pareja')?.value)||null):null;
   const subcatId=document.getElementById('gm-subcat')?.value||null;
+  const tarjetaId=document.getElementById('gm-tarjeta-id')?.value||null;
   setBtnLoading('btn-add-gasto-modal',true);
-  const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado,aporte_pareja:esComp?aportePareja:null};
-  const{error}=await sb.from('gastos').insert(row);
-  setBtnLoading('btn-add-gasto-modal',false);
-  if(error){showToast(error.message,'error');return;}
-  showToast('Gasto agregado ✓');
+  let error;
+  if(medio==='credito'){
+    const n=parseInt(document.getElementById('gm-ncuotas').value)||1;
+    const mesInicio=parseInt(document.getElementById('gm-cuota-mes').value);
+    const anioInicio=parseInt(document.getElementById('gm-cuota-anio').value);
+    const cuotaMonto=Math.round(monto/n*100)/100;
+    const planId=generatePlanId();
+    const rows=[];
+    for(let i=0;i<n;i++){
+      let m=mesInicio+i,y=anioInicio;
+      while(m>11){m-=12;y++;}
+      rows.push({user_id:currentUser.id,fecha:`${y}-${String(m+1).padStart(2,'0')}-01`,fecha_compra:fecha,descripcion:`${desc} — cuota ${String(i+1).padStart(2,'0')}/${String(n).padStart(2,'0')}`,monto:cuotaMonto,moneda,cat,tipo,medio,notas,cuota_num:i+1,cuota_total:n,cuota_monto:cuotaMonto,plan_id:planId,es_compartido:esComp,tarjeta_id:tarjetaId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado});
+    }
+    ({error}=await sb.from('gastos').insert(rows));
+    setBtnLoading('btn-add-gasto-modal',false);
+    if(error){showToast(error.message,'error');return;}
+    showToast(`${n} cuota${n>1?'s':''} agregadas ✓`);
+  } else {
+    const row={user_id:currentUser.id,fecha,descripcion:desc,monto,moneda,cat,tipo,medio,notas,es_compartido:esComp,subcat_id:subcatId||null,pagado:esPagado,pagado_dueno:esPagado,pagado_pareja:esPagado,aporte_pareja:esComp?aportePareja:null};
+    ({error}=await sb.from('gastos').insert(row));
+    setBtnLoading('btn-add-gasto-modal',false);
+    if(error){showToast(error.message,'error');return;}
+    showToast('Gasto agregado ✓');
+  }
   closeModal('modal-nuevo-gasto');
-  // reset modal form
   document.getElementById('gm-desc').value='';document.getElementById('gm-monto').value='';document.getElementById('gm-notas').value='';
   document.getElementById('gm-medio').value='efectivo';document.getElementById('gm-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('gm-ncuotas').value='1';
+  const gmcf=document.getElementById('gm-cuotas-fields');if(gmcf)gmcf.style.display='none';
+  const gmtf=document.getElementById('gm-tarjeta-field');if(gmtf)gmtf.style.display='none';
   const cb=document.getElementById('gm-compartido');if(cb)cb.checked=false;
   const pcb=document.getElementById('gm-pagado');if(pcb)pcb.checked=true;
   toggleAportePareja('gm');
@@ -3842,9 +3872,10 @@ function renderDashboard(){
     const ultimoFijo=getUltimoIngresoFijo();
     if(ultimoFijo){balParaMostrar=ultimoFijo.total-tG;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
   }
+  const pBal=pTI-pTGsa;
   const balSub=balEsRef
     ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}${ahorroReg>0?' · descuenta '+fmtARS(ahorroReg)+' de ahorro':''}</div>`
-    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroReg>0?' · ya descuenta '+fmtARS(ahorroReg)+' de ahorro (no tocar)':''}</div>`;
+    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroReg>0?' · ya descuenta '+fmtARS(ahorroReg)+' de ahorro (no tocar)':''}${deltaBadge(balParaMostrar,pBal,false)}</div>`;
   document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tGsa)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}${deltaBadge(tGsa,pTGsa,true)}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div><div class="card-sub">${tIU>0?`+ ${fmtUSD(tIU)} USD · `:''}${deltaBadge(tI,pTI,false)}</div></div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
   // Pendientes de pago del mes seleccionado
   const pendientes=gastos.filter(g=>g.pagado===false);
