@@ -4255,6 +4255,9 @@ function toggleTheme(){
   localStorage.setItem('theme',next);
   applyTheme(next);
   try{renderDashboard();}catch(e){}
+  try{renderInversiones();}catch(e){}
+  try{renderPatrimonio();}catch(e){}
+  try{renderAnalisis();}catch(e){}
 }
 
 // ATAJOS RÁPIDOS
