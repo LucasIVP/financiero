@@ -1075,6 +1075,7 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
 <div id="page-compras" class="page">
   <div class="section-header" style="margin-bottom:16px">
     <div class="section-title">🛒 Lista de Compras</div>
+    <button class="btn btn-primary" onclick="abrirModalTicket()" style="font-size:13px;padding:7px 14px">📸 Cargar ticket</button>
   </div>
   <div class="inner-tabs">
     <button class="inner-tab active" onclick="innerTab('compras','compras-lista',event)">📋 Lista actual</button>
@@ -1147,6 +1148,57 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
       <div id="temas-list" style="margin-top:14px"></div>
     </div>
     <div id="compras-temas-container"></div>
+  </div>
+</div>
+
+<!-- Modal: Cargar ticket -->
+<div id="modal-ticket" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;overflow-y:auto;padding:20px 12px">
+  <div style="max-width:520px;margin:auto;background:var(--surface);border-radius:16px;padding:24px;position:relative">
+    <button onclick="cerrarModalTicket()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer">✕</button>
+    <div style="font-size:17px;font-weight:700;margin-bottom:18px">📸 Cargar ticket</div>
+
+    <!-- Paso 1: selección de imagen -->
+    <div id="ticket-step-1">
+      <div style="border:2px dashed var(--border);border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:border-color .2s" onclick="document.getElementById('ticket-file-input').click()" id="ticket-drop-zone">
+        <div style="font-size:36px;margin-bottom:10px">🧾</div>
+        <div style="font-weight:600;margin-bottom:4px">Tocá para elegir una foto del ticket</div>
+        <div style="font-size:12px;color:var(--muted)">JPG, PNG o HEIC · La foto se procesa con IA</div>
+        <input type="file" id="ticket-file-input" accept="image/*" capture="environment" style="display:none" onchange="ticketFileSelected(event)">
+      </div>
+      <div id="ticket-preview-wrap" style="display:none;margin-top:16px">
+        <img id="ticket-preview-img" style="width:100%;max-height:280px;object-fit:contain;border-radius:10px;border:1px solid var(--border)">
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn btn-primary" onclick="analizarTicket()" style="flex:1">🔍 Analizar ticket</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('ticket-file-input').click()">Cambiar foto</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paso 2: loading -->
+    <div id="ticket-step-2" style="display:none;text-align:center;padding:32px 0">
+      <div style="font-size:32px;margin-bottom:12px;animation:spin 1s linear infinite;display:inline-block">⚙️</div>
+      <div style="font-weight:600">Analizando ticket con IA…</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Puede tardar unos segundos</div>
+    </div>
+
+    <!-- Paso 3: revisar ítems -->
+    <div id="ticket-step-3" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:600">Revisá los ítems detectados</div>
+        <button class="btn btn-ghost" onclick="agregarItemTicket()" style="font-size:12px;padding:5px 10px">+ Ítem</button>
+      </div>
+      <div id="ticket-items-list" style="margin-bottom:16px"></div>
+      <div class="form-grid" style="margin-bottom:16px">
+        <div class="form-group"><label>Nombre de la lista</label><input type="text" id="ticket-lista-nombre" placeholder="Ej: Supermercado Coto"></div>
+        <div class="form-group"><label>Fecha</label><input type="date" id="ticket-lista-fecha"></div>
+        <div class="form-group"><label style="display:flex;align-items:center;gap:8px;padding-top:22px;cursor:pointer"><input type="checkbox" id="ticket-lista-compartida" style="width:16px;height:16px;accent-color:var(--accent2)"> <span style="color:var(--accent2);font-weight:600">💑 Lista compartida</span></label></div>
+      </div>
+      <div id="ticket-error" style="display:none;color:var(--danger);font-size:13px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" onclick="confirmarTicket()" style="flex:1" id="btn-confirmar-ticket">✅ Crear lista</button>
+        <button class="btn btn-ghost" onclick="cerrarModalTicket()">Cancelar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -7441,6 +7493,172 @@ function renderComprasTemas() {
 
 
 init();
+
+// ── TICKET OCR ───────────────────────────────────────────────────────────────
+
+let _ticketItems = []; // [{nombre, cantidad, precio_unitario, tema}]
+let _ticketImgBase64 = null;
+let _ticketImgType = 'image/jpeg';
+
+function abrirModalTicket() {
+  _ticketItems = [];
+  _ticketImgBase64 = null;
+  document.getElementById('ticket-step-1').style.display = '';
+  document.getElementById('ticket-step-2').style.display = 'none';
+  document.getElementById('ticket-step-3').style.display = 'none';
+  document.getElementById('ticket-preview-wrap').style.display = 'none';
+  document.getElementById('ticket-file-input').value = '';
+  document.getElementById('ticket-error').style.display = 'none';
+  // defaults
+  const hoy = new Date().toISOString().slice(0,10);
+  document.getElementById('ticket-lista-fecha').value = hoy;
+  document.getElementById('ticket-lista-nombre').value = '';
+  document.getElementById('ticket-lista-compartida').checked = false;
+  document.getElementById('modal-ticket').style.display = '';
+}
+
+function cerrarModalTicket() {
+  document.getElementById('modal-ticket').style.display = 'none';
+}
+
+function ticketFileSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  _ticketImgType = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    _ticketImgBase64 = dataUrl.split(',')[1];
+    document.getElementById('ticket-preview-img').src = dataUrl;
+    document.getElementById('ticket-preview-wrap').style.display = '';
+    // sugerir nombre de lista basado en fecha
+    const hoy = new Date().toISOString().slice(0,10);
+    if (!document.getElementById('ticket-lista-nombre').value) {
+      document.getElementById('ticket-lista-nombre').value = 'Supermercado ' + hoy;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analizarTicket() {
+  if (!_ticketImgBase64) return;
+  document.getElementById('ticket-step-1').style.display = 'none';
+  document.getElementById('ticket-step-2').style.display = '';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/parse-ticket`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ image_base64: _ticketImgBase64, media_type: _ticketImgType }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error || json.detail || 'Error al analizar');
+    _ticketItems = json.items || [];
+  } catch (err) {
+    document.getElementById('ticket-step-2').style.display = 'none';
+    document.getElementById('ticket-step-1').style.display = '';
+    document.getElementById('ticket-preview-wrap').style.display = '';
+    mostrarToast('❌ ' + (err.message || 'Error al analizar el ticket'), 'error');
+    return;
+  }
+
+  document.getElementById('ticket-step-2').style.display = 'none';
+  document.getElementById('ticket-step-3').style.display = '';
+  renderTicketItems();
+}
+
+function renderTicketItems() {
+  const temas = ['Alimentos','Bebidas','Limpieza','Higiene','Mascotas','Verdulería','Carnicería','Panadería','Lácteos','Congelados','General'];
+  const html = _ticketItems.map((it, i) => `
+    <div style="display:grid;grid-template-columns:1fr 60px 90px 110px 32px;gap:6px;align-items:center;margin-bottom:8px;font-size:13px">
+      <input type="text" value="${escHtml(it.nombre)}" oninput="_ticketItems[${i}].nombre=this.value" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:13px;min-width:0">
+      <input type="number" value="${it.cantidad}" min="1" oninput="_ticketItems[${i}].cantidad=+this.value||1" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:13px;min-width:0;text-align:center">
+      <input type="number" value="${it.precio_unitario}" min="0" oninput="_ticketItems[${i}].precio_unitario=+this.value||0" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:13px;min-width:0">
+      <select oninput="_ticketItems[${i}].tema=this.value" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 6px;color:var(--text);font-size:12px;min-width:0">
+        ${temas.map(t=>`<option value="${t}" ${t===it.tema?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <button onclick="eliminarItemTicket(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;line-height:1">✕</button>
+    </div>
+  `).join('');
+  const header = `<div style="display:grid;grid-template-columns:1fr 60px 90px 110px 32px;gap:6px;font-size:11px;color:var(--muted);margin-bottom:4px;padding:0 2px">
+    <span>Nombre</span><span style="text-align:center">Cant.</span><span>Precio unit.</span><span>Tema</span><span></span>
+  </div>`;
+  document.getElementById('ticket-items-list').innerHTML = header + (html || '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px">No se detectaron ítems</div>');
+}
+
+function eliminarItemTicket(i) {
+  _ticketItems.splice(i, 1);
+  renderTicketItems();
+}
+
+function agregarItemTicket() {
+  _ticketItems.push({ nombre: '', cantidad: 1, precio_unitario: 0, tema: 'General' });
+  renderTicketItems();
+}
+
+async function confirmarTicket() {
+  const nombre = document.getElementById('ticket-lista-nombre').value.trim() || 'Ticket';
+  const fecha = document.getElementById('ticket-lista-fecha').value || new Date().toISOString().slice(0,10);
+  const esCompartida = document.getElementById('ticket-lista-compartida').checked;
+  const uid = (await sb.auth.getUser()).data.user?.id;
+  if (!uid) { mostrarToast('No autenticado', 'error'); return; }
+
+  const itemsValidos = _ticketItems.filter(it => it.nombre.trim());
+  if (!itemsValidos.length) {
+    document.getElementById('ticket-error').textContent = 'Agregá al menos un ítem con nombre.';
+    document.getElementById('ticket-error').style.display = '';
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirmar-ticket');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+
+  const { data: lista, error: errLista } = await sb.from('compras_listas').insert({
+    user_id: uid, nombre, fecha, estado: 'cerrada', es_compartida: esCompartida,
+    closed_at: new Date().toISOString(),
+  }).select().single();
+
+  if (errLista || !lista) {
+    btn.disabled = false; btn.textContent = '✅ Crear lista';
+    document.getElementById('ticket-error').textContent = 'Error al crear la lista: ' + (errLista?.message || '?');
+    document.getElementById('ticket-error').style.display = '';
+    return;
+  }
+
+  const rows = itemsValidos.map(it => ({
+    user_id: uid,
+    nombre: it.nombre.trim(),
+    tema: it.tema || 'General',
+    cantidad: it.cantidad || 1,
+    precio_estimado: it.precio_unitario || null,
+    precio_real: it.precio_unitario || null,
+    comprado: true,
+    fecha_compra: fecha,
+    es_compartida: esCompartida,
+    lista_id: lista.id,
+  }));
+
+  const { error: errItems } = await sb.from('compras_items').insert(rows);
+  if (errItems) {
+    btn.disabled = false; btn.textContent = '✅ Crear lista';
+    document.getElementById('ticket-error').textContent = 'Lista creada pero error en ítems: ' + errItems.message;
+    document.getElementById('ticket-error').style.display = '';
+    return;
+  }
+
+  cerrarModalTicket();
+  await loadAllData();
+  renderCompras();
+  mostrarToast('✅ Ticket cargado con ' + rows.length + ' ítems');
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 </script>
 <script>
 // Registro del service worker (ver service-worker.js) — habilita instalar la app en el
