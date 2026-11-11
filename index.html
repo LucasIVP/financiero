@@ -3925,8 +3925,12 @@ function renderDashboard(){
   const cuotasMes=filterByMonth(db.gastos,month,year).filter(g=>g.plan_id);
   const tC=cuotasMes.reduce((s,g)=>s+toARS(g.monto,g.moneda),0);
   const nPlanesActivos=planesActivos.length;
-  const tG=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0),tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
-  const ahorroReg=gastos.filter(g=>g.tipo==='ahorro').reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
+  const mesYM=`${year}-${String(month+1).padStart(2,'0')}`;
+  const vaqAp=(dbCompartido.vaquita||[]).filter(v=>v.tipo==='aporte'&&v.aportado_por===currentUser.id&&v.fecha.slice(0,7)===mesYM).reduce((s,v)=>s+toARS(v.monto,v.moneda),0);
+  const tGbase=gastos.reduce((s,g)=>s+gastoEfectivo(g,month,year),0);
+  const tG=tGbase+vaqAp; // incluye aportes a Ahorro Pareja como gasto (se neutralizan abajo)
+  const tIA=ingresos.filter(i=>i.moneda==='ARS').reduce((s,i)=>s+i.monto,0),tIU=ingresos.filter(i=>i.moneda==='USD').reduce((s,i)=>s+i.monto,0),tI=tIA+toARS(tIU,'USD'),bal=tI-tG;
+  const ahorroReg=gastos.filter(g=>g.tipo==='ahorro').reduce((s,g)=>s+gastoEfectivo(g,month,year),0)+vaqAp;
   const tGsa=tG-ahorroReg; // gastos sin lo cargado como Ahorro
   // Delta vs mes anterior
   let pM=month-1,pY=year;if(pM<0){pM=11;pY--;}
@@ -3946,9 +3950,10 @@ function renderDashboard(){
     if(ultimoFijo){balParaMostrar=ultimoFijo.total-tG;balEsRef=true;balRefLabel=ultimoFijo.mesLabel;}
   }
   const pBal=pTI-pTGsa;
+  const ahorroNote=ahorroReg>0?(vaqAp>0?` · descuenta ${fmtARS(ahorroReg)} de ahorro (incl. ${fmtARS(vaqAp)} Ahorro Pareja)`:` · descuenta ${fmtARS(ahorroReg)} de ahorro`):'';
   const balSub=balEsRef
-    ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}${ahorroReg>0?' · descuenta '+fmtARS(ahorroReg)+' de ahorro':''}</div>`
-    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroReg>0?' · ya descuenta '+fmtARS(ahorroReg)+' de ahorro (no tocar)':''}${deltaBadge(balParaMostrar,pBal,false)}</div>`;
+    ?`<div class="card-sub" style="color:var(--warn)">⚠️ Estimado con sueldo de ${balRefLabel}${ahorroNote}</div>`
+    :`<div class="card-sub">${balParaMostrar>=0?'Superávit 🎉':'Déficit ⚠️'}${ahorroNote}${deltaBadge(balParaMostrar,pBal,false)}</div>`;
   document.getElementById('dash-kpis').innerHTML=`<div class="card"><div class="card-title">Gastos del mes</div><div class="card-value amount-negative">${fmtARS(tG)}</div><div class="card-sub">${gastos.length} movimiento${gastos.length!==1?'s':''}${deltaBadge(tG,pTG,true)}</div></div><div class="card"><div class="card-title">Ingresos del mes</div><div class="card-value amount-positive">${fmtARS(tI)}</div><div class="card-sub">${tIU>0?`+ ${fmtUSD(tIU)} USD · `:''}${deltaBadge(tI,pTI,false)}</div></div><div class="card"><div class="card-title">Balance</div><div class="card-value ${balParaMostrar>=0?'amount-positive':'amount-negative'}">${fmtARS(balParaMostrar)}</div>${balSub}</div><div class="card"><div class="card-title">Cuotas este mes</div><div class="card-value">${fmtARS(tC)}</div><div class="card-sub">${nPlanesActivos} plan${nPlanesActivos!==1?'es':''} activo${nPlanesActivos!==1?'s':''}</div></div>`;
   // Pendientes de pago del mes seleccionado
   const pendientes=gastos.filter(g=>g.pagado===false);
