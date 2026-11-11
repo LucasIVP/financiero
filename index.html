@@ -727,6 +727,7 @@
         <div class="form-group"><label>Monto</label><input type="number" id="vaq-monto" placeholder="0" min="0"></div>
         <div class="form-group"><label>Moneda</label><select id="vaq-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
         <div class="form-group"><label>Tipo</label><select id="vaq-tipo"><option value="aporte">Aporte</option><option value="retiro">Retiro</option></select></div>
+        <div class="form-group"><label>Bolsillo</label><select id="vaq-categoria"><option value="">— Sin bolsillo —</option></select></div>
         <div class="form-group"><label>Notas</label><input type="text" id="vaq-notas" placeholder="Opcional"></div>
       </div>
       <div style="margin-top:14px;display:flex;gap:10px">
@@ -739,7 +740,7 @@
       <div style="font-weight:600;margin-bottom:14px">Movimientos</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Quién</th><th>Monto</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Bolsillo</th><th>Quién</th><th>Monto</th><th></th></tr></thead>
           <tbody id="vaquita-table-body"></tbody>
         </table>
       </div>
@@ -4965,9 +4966,10 @@ async function addVaquita() {
   const moneda = document.getElementById('vaq-moneda').value;
   const tipo = document.getElementById('vaq-tipo').value;
   const notas = document.getElementById('vaq-notas').value.trim();
+  const categoria = document.getElementById('vaq-categoria').value || null;
   if (!fecha || !desc || isNaN(monto) || monto <= 0) { showToast('Completá fecha, descripción y monto', 'error'); return; }
   setBtnLoading('btn-add-vaquita', true);
-  const { error } = await sb.from('vaquita').insert({ fecha, descripcion: desc, monto, moneda, tipo, notas, aportado_por: currentUser.id });
+  const { error } = await sb.from('vaquita').insert({ fecha, descripcion: desc, monto, moneda, tipo, notas, categoria, aportado_por: currentUser.id });
   setBtnLoading('btn-add-vaquita', false);
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   showToast('Movimiento agregado ✓');
@@ -4980,6 +4982,7 @@ function clearVaquitaForm() {
   ['vaq-desc','vaq-monto','vaq-notas'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('vaq-moneda').value = 'ARS';
   document.getElementById('vaq-tipo').value = 'aporte';
+  document.getElementById('vaq-categoria').value = '';
   document.getElementById('vaq-fecha').value = new Date().toISOString().slice(0,10);
 }
 
@@ -4996,23 +4999,52 @@ async function deleteVaquita(id) {
 }
 
 function renderVaquita() {
-  const aportes = dbCompartido.vaquita.filter(v => v.tipo === 'aporte').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
-  const retiros = dbCompartido.vaquita.filter(v => v.tipo === 'retiro').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+  const all = dbCompartido.vaquita;
+
+  // Popular dropdown de bolsillos con los existentes en DB
+  const cats = [...new Set(all.map(v => v.categoria).filter(Boolean))].sort();
+  const sel = document.getElementById('vaq-categoria');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Sin bolsillo —</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (cur) sel.value = cur;
+  }
+
+  const aportes = all.filter(v => v.tipo === 'aporte').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+  const retiros = all.filter(v => v.tipo === 'retiro').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
   const saldo = aportes - retiros;
-  document.getElementById('vaquita-kpis').innerHTML = `
-    <div class="card"><div class="card-title">Saldo actual</div><div class="card-value ${saldo >= 0 ? 'amount-positive' : 'amount-negative'}">${fmtARS(saldo)}</div></div>
+
+  // KPIs globales
+  let kpisHtml = `
+    <div class="card"><div class="card-title">Saldo total</div><div class="card-value ${saldo >= 0 ? 'amount-positive' : 'amount-negative'}">${fmtARS(saldo)}</div></div>
     <div class="card"><div class="card-title">Total aportado</div><div class="card-value amount-positive">${fmtARS(aportes)}</div></div>
     <div class="card"><div class="card-title">Total retirado</div><div class="card-value amount-negative">${fmtARS(retiros)}</div></div>`;
+
+  // KPIs por bolsillo (solo si hay categorías)
+  if (cats.length > 0) {
+    kpisHtml += `<div style="grid-column:1/-1;font-weight:600;font-size:13px;color:var(--muted);margin-top:4px">Por bolsillo</div>`;
+    for (const cat of cats) {
+      const rows = all.filter(v => v.categoria === cat);
+      const ap = rows.filter(v => v.tipo === 'aporte').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+      const re = rows.filter(v => v.tipo === 'retiro').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+      const sd = ap - re;
+      kpisHtml += `<div class="card"><div class="card-title">${cat}</div><div class="card-value ${sd >= 0 ? 'amount-positive' : 'amount-negative'}">${fmtARS(sd)}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">de ${fmtARS(ap)} aportado</div></div>`;
+    }
+  }
+
+  document.getElementById('vaquita-kpis').innerHTML = kpisHtml;
+
   const tbody = document.getElementById('vaquita-table-body');
   const empty = document.getElementById('vaquita-empty');
-  if (dbCompartido.vaquita.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  if (all.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  tbody.innerHTML = dbCompartido.vaquita.map(v => {
+  tbody.innerHTML = all.map(v => {
     const esMio = v.aportado_por === currentUser.id;
     return `<tr>
       <td style="color:var(--muted)">${v.fecha}</td>
       <td style="font-weight:500">${v.descripcion}</td>
       <td><span class="badge" style="background:${v.tipo==='aporte'?'rgba(0,212,170,0.1)':'rgba(255,77,109,0.1)'};color:${v.tipo==='aporte'?'var(--green)':'var(--red)'}">${v.tipo}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${v.categoria || '—'}</td>
       <td style="font-size:12px;color:var(--muted)">${esMio ? 'Yo' : 'Pareja'}</td>
       <td style="font-weight:600;color:${v.tipo==='aporte'?'var(--green)':'var(--red)'}">${v.moneda === 'USD' ? fmtUSD(v.monto) : fmtARS(v.monto)}</td>
       <td>${esMio ? `<button class="del-btn" onclick="deleteVaquita('${v.id}')">🗑</button>` : ''}</td>
