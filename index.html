@@ -1092,6 +1092,33 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
   </div>
 </div>
 
+<!-- Modal editar Ahorro Pareja -->
+<div class="modal-overlay" id="modal-edit-ap">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">✏️ Editar movimiento</span><button class="modal-close" onclick="closeModal('modal-edit-ap')">×</button></div>
+    <input type="hidden" id="eap-id">
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-group"><label>Fecha</label><input type="date" id="eap-fecha"></div>
+      <div class="form-group"><label>Fondo</label>
+        <select id="eap-categoria">
+          <option value="Ahorro Budín">🐕 Ahorro Budín</option>
+          <option value="Ahorro Casa">🏠 Ahorro Casa</option>
+          <option value="Ahorro Viajes">✈️ Ahorro Viajes</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Tipo</label><select id="eap-tipo"><option value="aporte">Aporte</option><option value="retiro">Retiro</option></select></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="eap-monto" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="eap-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Descripción</label><input type="text" id="eap-desc" placeholder="Ej: Aporte diciembre"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input type="text" id="eap-notas" placeholder="Opcional"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-ap')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-ap" onclick="saveEditAhorroPareja()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- PÁGINA LISTA DE COMPRAS -->
 <div id="page-compras" class="page">
   <div class="section-header" style="margin-bottom:16px">
@@ -5137,7 +5164,7 @@ function renderAhorroPareja() {
       <td><span class="badge" style="background:${v.tipo==='aporte'?'rgba(0,212,170,0.1)':'rgba(255,77,109,0.1)'};color:${v.tipo==='aporte'?'var(--green)':'var(--red)'}">${v.tipo}</span></td>
       <td style="font-size:12px;color:var(--muted)">${esMio ? 'Lucas' : 'Agustina'}</td>
       <td style="font-weight:600;color:${v.tipo==='aporte'?'var(--green)':'var(--red)'}">${v.moneda === 'USD' ? fmtUSD(v.monto) : fmtARS(v.monto)}</td>
-      <td>${esMio ? `<button class="del-btn" onclick="deleteAhorroPareja('${v.id}')">🗑</button>` : ''}</td>
+      <td style="display:flex;gap:6px">${esMio ? `<button class="del-btn" onclick="openEditAhorroPareja('${v.id}')" title="Editar" style="opacity:.7">✏️</button><button class="del-btn" onclick="deleteAhorroPareja('${v.id}')">🗑</button>` : ''}</td>
     </tr>`;
   }).join('');
 }
@@ -5168,6 +5195,40 @@ function clearAhorroParejaForm() {
   document.getElementById('ap-moneda').value = 'ARS';
   document.getElementById('ap-tipo').value = 'aporte';
   document.getElementById('ap-fecha').value = new Date().toISOString().slice(0, 10);
+}
+
+function openEditAhorroPareja(id) {
+  const v = dbCompartido.vaquita.find(x => x.id === id);
+  if (!v) return;
+  document.getElementById('eap-id').value = id;
+  document.getElementById('eap-fecha').value = v.fecha;
+  document.getElementById('eap-categoria').value = v.categoria || 'Ahorro Budín';
+  document.getElementById('eap-tipo').value = v.tipo || 'aporte';
+  document.getElementById('eap-monto').value = v.monto;
+  document.getElementById('eap-moneda').value = v.moneda || 'ARS';
+  document.getElementById('eap-desc').value = v.descripcion || '';
+  document.getElementById('eap-notas').value = v.notas || '';
+  openModal('modal-edit-ap');
+}
+
+async function saveEditAhorroPareja() {
+  const id = document.getElementById('eap-id').value;
+  const fecha = document.getElementById('eap-fecha').value;
+  const categoria = document.getElementById('eap-categoria').value;
+  const tipo = document.getElementById('eap-tipo').value;
+  const monto = parseFloat(document.getElementById('eap-monto').value);
+  const moneda = document.getElementById('eap-moneda').value;
+  const descripcion = document.getElementById('eap-desc').value.trim() || categoria;
+  const notas = document.getElementById('eap-notas').value.trim();
+  if (!fecha || isNaN(monto) || monto <= 0) { showToast('Completá fecha y monto', 'error'); return; }
+  setBtnLoading('btn-save-ap', true);
+  const { error } = await sb.from('vaquita').update({ fecha, categoria, tipo, monto, moneda, descripcion, notas }).eq('id', id);
+  setBtnLoading('btn-save-ap', false);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  closeModal('modal-edit-ap');
+  showToast('Movimiento actualizado ✓');
+  await loadCompartido();
+  renderAhorroPareja();
 }
 
 async function deleteAhorroPareja(id) {
