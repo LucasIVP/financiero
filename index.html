@@ -270,11 +270,9 @@
     </div>
   </div>
   <div class="grid-4" id="dash-kpis"></div>
-  <div id="dash-limites" style="margin-bottom:20px"></div>
   <div id="dash-pendientes" style="display:none;margin-bottom:20px"></div>
   <div id="dash-grupales-vinculados" style="display:none;margin-bottom:20px"></div>
   <div id="dash-prestamos-vinculados" style="display:none;margin-bottom:20px"></div>
-  <div id="dash-objetivos" style="margin-bottom:20px"></div>
   <div id="dash-semanal" style="margin-bottom:20px"></div>
   <div class="grid-2">
     <div class="card"><div class="card-title">Gastos por categoría</div><div class="chart-container" style="height:220px"><canvas id="chart-cat"></canvas></div></div>
@@ -4056,9 +4054,6 @@ function renderDashboard(){
       ptDiv.innerHTML='';
     }
   }
-  // Los gastos cargados con Tipo = Ahorro no cuentan como gasto: suman a la línea de ahorro
-  renderObjetivosDashboard(tI, tG - ahorroReg, bal + ahorroReg, ahorroReg);
-  renderLimitesConjuntos(month, year, 'dash-limites', true);
   publicarMiMargen();
   const porCat={};gastos.forEach(g=>{const v=gastoEfectivo(g,month,year);porCat[g.cat]=(porCat[g.cat]||0)+v;});
   const sc=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
