@@ -228,6 +228,7 @@
   <button class="nav-btn" onclick="goTo('tarjetas')">💳 Tarjetas</button>
   <button class="nav-btn" onclick="goTo('patrimonio')">📊 Patrimonio y Análisis</button>
   <button class="nav-btn" onclick="goTo('compartido')">🏠 Compartido</button>
+  <button class="nav-btn" onclick="goTo('ahorro-pareja')">💑 Ahorro Pareja</button>
 <button class="nav-btn" onclick="goTo('compras');renderCompras()">🛒 Compras</button>
 <button class="nav-btn" onclick="goTo('config')">⚙️ Config</button>
   <span class="nav-spacer"></span>
@@ -241,6 +242,7 @@
 <div class="more-drawer" id="more-drawer">
   <div class="more-drawer-item" onclick="goTo('patrimonio');closeMoreDrawer()"><span>📊</span>Patrimonio y Análisis</div>
   <div class="more-drawer-item" onclick="goTo('compartido');closeMoreDrawer()"><span>🏠</span>Compartido</div>
+  <div class="more-drawer-item" onclick="goTo('ahorro-pareja');closeMoreDrawer()"><span>💑</span>Ahorro Pareja</div>
   <div class="more-drawer-item" onclick="goTo('compras');renderCompras();closeMoreDrawer()"><span>🛒</span>Compras</div>
   <div class="more-drawer-item" onclick="goTo('config');closeMoreDrawer()"><span>⚙️</span>Config</div>
   <div class="more-drawer-item" onclick="toggleTheme();closeMoreDrawer()"><span id="more-theme-icon">☀️</span>Cambiar tema</div>
@@ -699,7 +701,6 @@
 
   <div class="inner-tabs">
     <button class="inner-tab active" onclick="innerTab('compartido','gastos-comp',event)">💸 Gastos compartidos</button>
-    <button class="inner-tab" onclick="innerTab('compartido','vaquita',event)">🐷 Vaquita</button>
     <button class="inner-tab" onclick="innerTab('compartido','grupales',event);renderGrupales()">🤝 Gastos grupales</button>
   </div>
 
@@ -715,36 +716,6 @@
         </table>
       </div>
       <div id="comp-empty" class="empty-state" style="display:none">No hay gastos compartidos este mes</div>
-    </div>
-  </div>
-
-  <div id="compartido-vaquita" class="inner-section">
-    <div class="card" style="margin-bottom:20px">
-      <div style="font-weight:600;margin-bottom:14px">🐷 Nueva vaquita</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Fecha</label><input type="date" id="vaq-fecha"></div>
-        <div class="form-group"><label>Descripción</label><input type="text" id="vaq-desc" placeholder="Ej: Fondo de emergencia"></div>
-        <div class="form-group"><label>Monto</label><input type="number" id="vaq-monto" placeholder="0" min="0"></div>
-        <div class="form-group"><label>Moneda</label><select id="vaq-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
-        <div class="form-group"><label>Tipo</label><select id="vaq-tipo"><option value="aporte">Aporte</option><option value="retiro">Retiro</option></select></div>
-        <div class="form-group"><label>Bolsillo</label><select id="vaq-categoria"><option value="">— Sin bolsillo —</option></select></div>
-        <div class="form-group"><label>Notas</label><input type="text" id="vaq-notas" placeholder="Opcional"></div>
-      </div>
-      <div style="margin-top:14px;display:flex;gap:10px">
-        <button class="btn btn-primary" id="btn-add-vaquita" onclick="addVaquita()">+ Agregar</button>
-        <button class="btn btn-ghost" onclick="clearVaquitaForm()">Limpiar</button>
-      </div>
-    </div>
-    <div class="grid-3" id="vaquita-kpis" style="margin-bottom:20px"></div>
-    <div class="card">
-      <div style="font-weight:600;margin-bottom:14px">Movimientos</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Bolsillo</th><th>Quién</th><th>Monto</th><th></th></tr></thead>
-          <tbody id="vaquita-table-body"></tbody>
-        </table>
-      </div>
-      <div id="vaquita-empty" class="empty-state" style="display:none">Sin movimientos en la vaquita</div>
     </div>
   </div>
 
@@ -1072,6 +1043,55 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
 </div>
 
 <!-- PÁGINA ANÁLISIS Y AHORRO -->
+<!-- PÁGINA AHORRO PAREJA -->
+<div id="page-ahorro-pareja" class="page">
+  <div class="section-header" style="margin-bottom:20px">
+    <div><div class="section-title">💑 Ahorro Pareja</div><div style="color:var(--muted);font-size:13px;margin-top:2px">Fondos compartidos entre Lucas y Agustina</div></div>
+  </div>
+
+  <!-- Cards por bolsillo -->
+  <div id="ap-bolsillos" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px"></div>
+
+  <!-- KPI total -->
+  <div class="grid-3" id="ap-kpis" style="margin-bottom:24px"></div>
+
+  <!-- Formulario -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="font-weight:600;margin-bottom:14px">➕ Nuevo movimiento</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Fecha</label><input type="date" id="ap-fecha"></div>
+      <div class="form-group"><label>Fondo</label>
+        <select id="ap-categoria">
+          <option value="Ahorro Budín">🐕 Ahorro Budín</option>
+          <option value="Ahorro Casa">🏠 Ahorro Casa</option>
+          <option value="Ahorro Viajes">✈️ Ahorro Viajes</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Tipo</label><select id="ap-tipo"><option value="aporte">Aporte</option><option value="retiro">Retiro</option></select></div>
+      <div class="form-group"><label>Monto</label><input type="number" id="ap-monto" placeholder="0" min="0"></div>
+      <div class="form-group"><label>Moneda</label><select id="ap-moneda"><option value="ARS">🇦🇷 ARS</option><option value="USD">🇺🇸 USD</option></select></div>
+      <div class="form-group"><label>Descripción</label><input type="text" id="ap-desc" placeholder="Ej: Aporte diciembre"></div>
+      <div class="form-group"><label>Notas</label><input type="text" id="ap-notas" placeholder="Opcional"></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-primary" id="btn-add-ap" onclick="addAhorroPareja()">+ Agregar</button>
+      <button class="btn btn-ghost" onclick="clearAhorroParejaForm()">Limpiar</button>
+    </div>
+  </div>
+
+  <!-- Tabla de movimientos -->
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:14px">Movimientos</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Fondo</th><th>Descripción</th><th>Tipo</th><th>Quién</th><th>Monto</th><th></th></tr></thead>
+        <tbody id="ap-table-body"></tbody>
+      </table>
+    </div>
+    <div id="ap-empty" class="empty-state" style="display:none">Sin movimientos todavía</div>
+  </div>
+</div>
+
 <!-- PÁGINA LISTA DE COMPRAS -->
 <div id="page-compras" class="page">
   <div class="section-header" style="margin-bottom:16px">
@@ -1936,7 +1956,7 @@ function goTo(page){
   _fabPage=page;
   const fab=document.getElementById('fab-main');
   if(fab)fab.style.display=(page==='gastos'||page==='compras')?'flex':'none';
-  const renders={dashboard:renderDashboard,gastos:()=>{renderAtajosRapidos();renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(renderCompartido),config:renderConfig,compras:renderCompras};
+  const renders={dashboard:renderDashboard,gastos:()=>{renderAtajosRapidos();renderGastos();initHistorialSelects();},ingresos:renderIngresos,tarjetas:()=>{renderTarjetas();renderPrestamos();},patrimonio:renderPatrimonio,compartido:()=>Promise.all([loadCompartido(),loadLimitesConjuntos()]).then(renderCompartido),'ahorro-pareja':()=>Promise.all([loadCompartido()]).then(()=>{document.getElementById('ap-fecha').value=new Date().toISOString().slice(0,10);renderAhorroPareja();}),config:renderConfig,compras:renderCompras};
   if(renders[page])renders[page]();
 }
 function openMoreDrawer(){document.getElementById('more-drawer').classList.add('open');document.getElementById('more-drawer-overlay').classList.add('open');}
@@ -5052,6 +5072,109 @@ function renderVaquita() {
   }).join('');
 }
 
+
+// ============================================================
+// AHORRO PAREJA
+// ============================================================
+
+const AP_BOLSILLOS = [
+  { key: 'Ahorro Budín',   emoji: '🐕', meta: 20000,  color: '#a78bfa' },
+  { key: 'Ahorro Casa',    emoji: '🏠', meta: 30000,  color: '#34d399' },
+  { key: 'Ahorro Viajes',  emoji: '✈️', meta: 50000,  color: '#38bdf8' },
+];
+
+function renderAhorroPareja() {
+  const all = dbCompartido.vaquita || [];
+
+  // Cards por bolsillo
+  document.getElementById('ap-bolsillos').innerHTML = AP_BOLSILLOS.map(b => {
+    const rows = all.filter(v => v.categoria === b.key);
+    const ap = rows.filter(v => v.tipo === 'aporte').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+    const re = rows.filter(v => v.tipo === 'retiro').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+    const saldo = ap - re;
+    const pct = Math.min(100, b.meta > 0 ? Math.round(saldo / b.meta * 100) : 0);
+    return `<div class="card" style="border-top:3px solid ${b.color}">
+      <div style="font-size:28px;margin-bottom:8px">${b.emoji}</div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${b.key}</div>
+      <div style="font-size:22px;font-weight:700;color:${b.color};margin-bottom:4px">${fmtARS(saldo)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">de ${fmtARS(b.meta)} meta · ${pct}%</div>
+      <div style="background:var(--surface2);border-radius:999px;height:6px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${b.color};border-radius:999px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // KPIs globales
+  const totalAp = all.filter(v => v.tipo === 'aporte').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+  const totalRe = all.filter(v => v.tipo === 'retiro').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+  const totalMeta = AP_BOLSILLOS.reduce((s, b) => s + b.meta, 0);
+  const totalSaldo = totalAp - totalRe;
+  document.getElementById('ap-kpis').innerHTML = `
+    <div class="card"><div class="card-title">Total ahorrado</div><div class="card-value amount-positive">${fmtARS(totalSaldo)}</div></div>
+    <div class="card"><div class="card-title">Meta total</div><div class="card-value">${fmtARS(totalMeta)}</div></div>
+    <div class="card"><div class="card-title">Progreso</div><div class="card-value">${totalMeta > 0 ? Math.round(totalSaldo / totalMeta * 100) : 0}%</div></div>`;
+
+  // Tabla
+  const tbody = document.getElementById('ap-table-body');
+  const empty = document.getElementById('ap-empty');
+  if (all.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  const sorted = [...all].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const b_map = Object.fromEntries(AP_BOLSILLOS.map(b => [b.key, b]));
+  tbody.innerHTML = sorted.map(v => {
+    const esMio = v.aportado_por === currentUser.id;
+    const bf = b_map[v.categoria];
+    const dot = bf ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${bf.color};margin-right:5px"></span>` : '';
+    return `<tr>
+      <td style="color:var(--muted)">${v.fecha}</td>
+      <td>${dot}${v.categoria || '—'}</td>
+      <td style="font-weight:500">${v.descripcion}</td>
+      <td><span class="badge" style="background:${v.tipo==='aporte'?'rgba(0,212,170,0.1)':'rgba(255,77,109,0.1)'};color:${v.tipo==='aporte'?'var(--green)':'var(--red)'}">${v.tipo}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${esMio ? 'Lucas' : 'Agustina'}</td>
+      <td style="font-weight:600;color:${v.tipo==='aporte'?'var(--green)':'var(--red)'}">${v.moneda === 'USD' ? fmtUSD(v.monto) : fmtARS(v.monto)}</td>
+      <td>${esMio ? `<button class="del-btn" onclick="deleteAhorroPareja('${v.id}')">🗑</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function addAhorroPareja() {
+  const fecha = document.getElementById('ap-fecha').value;
+  const categoria = document.getElementById('ap-categoria').value;
+  const tipo = document.getElementById('ap-tipo').value;
+  const monto = parseFloat(document.getElementById('ap-monto').value);
+  const moneda = document.getElementById('ap-moneda').value;
+  const desc = document.getElementById('ap-desc').value.trim() || categoria;
+  const notas = document.getElementById('ap-notas').value.trim();
+  if (!fecha || isNaN(monto) || monto <= 0) { showToast('Completá fecha y monto', 'error'); return; }
+  setBtnLoading('btn-add-ap', true);
+  const { error } = await sb.from('vaquita').insert({ fecha, descripcion: desc, monto, moneda, tipo, notas, categoria, aportado_por: currentUser.id });
+  setBtnLoading('btn-add-ap', false);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  showToast('Movimiento agregado ✓');
+  clearAhorroParejaForm();
+  await loadCompartido();
+  renderAhorroPareja();
+}
+
+function clearAhorroParejaForm() {
+  document.getElementById('ap-monto').value = '';
+  document.getElementById('ap-desc').value = '';
+  document.getElementById('ap-notas').value = '';
+  document.getElementById('ap-moneda').value = 'ARS';
+  document.getElementById('ap-tipo').value = 'aporte';
+  document.getElementById('ap-fecha').value = new Date().toISOString().slice(0, 10);
+}
+
+async function deleteAhorroPareja(id) {
+  const v = dbCompartido.vaquita.find(x => x.id === id);
+  confirmarEliminar(v?.descripcion || 'este movimiento', 'Se eliminará este movimiento. Esta acción no se puede deshacer.', async () => {
+    const { error } = await sb.from('vaquita').delete().eq('id', id);
+    if (error) { showToast('Error: ' + error.message, 'error'); return; }
+    dbCompartido.vaquita = dbCompartido.vaquita.filter(x => x.id !== id);
+    renderAhorroPareja();
+    showToast('Movimiento eliminado');
+  });
+}
 
 // ============================================================
 // GASTOS GRUPALES
