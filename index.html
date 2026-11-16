@@ -4888,14 +4888,21 @@ function renderTotalDeudaPareja() {
   const saldado = totalLeDebo < 1;
 
   el.innerHTML = `<div class="card" style="background:rgba(108,99,255,0.1);border-color:rgba(108,99,255,0.35)">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <div>
-        <div style="font-weight:700;font-size:15px">💰 Total que le debés a tu pareja</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Gastos compartidos, gastos grupales y cuotas de préstamos de tarjeta pendientes de este mes · <span style="text-decoration:underline;cursor:pointer" onclick="mostrarDesgloseDeuda()" title="Ver de qué gastos sale este número">🔍 ver detalle</span></div>
-      </div>
-      <div style="font-weight:800;font-size:24px;color:${saldado ? 'var(--green)' : 'var(--warn)'};cursor:pointer" onclick="mostrarDesgloseDeuda()" title="Ver de qué gastos sale este número">${saldado ? 'Saldado ✓' : fmtARS(totalLeDebo)}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:700;font-size:15px">💰 Balance con tu pareja</div>
+      <span style="font-size:12px;color:var(--muted);text-decoration:underline;cursor:pointer" onclick="mostrarDesgloseDeuda()">🔍 ver detalle</span>
     </div>
-    ${totalMeDebe >= 1 ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">Y tu pareja te debe a vos (gastos compartidos, gastos grupales y cuotas de préstamos de tarjeta pendientes de este mes): <strong style="color:var(--green);cursor:pointer;text-decoration:underline" onclick="mostrarDesgloseDeuda()" title="Ver de qué gastos sale este número">${fmtARS(totalMeDebe)}</strong></div>` : ''}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Gastos compartidos + grupales + préstamos de tarjeta pendientes de este mes</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:140px;padding:10px 14px;background:rgba(255,99,99,0.08);border:1px solid rgba(255,99,99,0.25);border-radius:10px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Le debés a ella</div>
+        <div style="font-weight:800;font-size:22px;color:${totalLeDebo < 1 ? 'var(--green)' : 'var(--warn)'};cursor:pointer" onclick="mostrarDesgloseDeuda()">${totalLeDebo < 1 ? 'Nada 🎉' : fmtARS(totalLeDebo)}</div>
+      </div>
+      <div style="flex:1;min-width:140px;padding:10px 14px;background:rgba(0,212,170,0.08);border:1px solid rgba(0,212,170,0.25);border-radius:10px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Ella te debe a vos</div>
+        <div style="font-weight:800;font-size:22px;color:${totalMeDebe < 1 ? 'var(--muted)' : 'var(--green)'};cursor:pointer" onclick="mostrarDesgloseDeuda()">${totalMeDebe < 1 ? '—' : fmtARS(totalMeDebe)}</div>
+      </div>
+    </div>
   </div>`;
 }
 
