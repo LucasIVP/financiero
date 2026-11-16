@@ -1085,6 +1085,7 @@ UPDATE gastos SET pagado_dueno = pagado, pagado_pareja = pagado WHERE es_compart
         <option value="">Todos los meses</option>
       </select>
     </div>
+    <div id="ap-mes-resumen" style="display:none;margin-bottom:12px;font-size:13px;color:var(--muted);padding:8px 12px;background:var(--surface2);border-radius:8px"></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Fecha</th><th>Fondo</th><th>Descripción</th><th>Tipo</th><th>Quién</th><th>Monto</th><th></th></tr></thead>
@@ -5165,6 +5166,21 @@ function renderAhorroPareja() {
     if (cur) mesSel.value = cur;
   }
   const mesFiltro = mesSel ? mesSel.value : '';
+
+  // Resumen mensual
+  const resumenEl = document.getElementById('ap-mes-resumen');
+  if (resumenEl) {
+    if (mesFiltro) {
+      const mesRows = all.filter(v => v.fecha.startsWith(mesFiltro));
+      const mesAp = mesRows.filter(v => v.tipo === 'aporte').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+      const mesRe = mesRows.filter(v => v.tipo === 'retiro').reduce((s, v) => s + toARS(v.monto, v.moneda), 0);
+      const mesNeto = mesAp - mesRe;
+      resumenEl.style.display = 'block';
+      resumenEl.innerHTML = `Aportes: <strong>${fmtARS(mesAp)}</strong> · Retiros: <strong>${fmtARS(mesRe)}</strong> · Neto: <strong style="color:${mesNeto>=0?'var(--green)':'var(--red)'}">${mesNeto>=0?'+':''}${fmtARS(mesNeto)}</strong>`;
+    } else {
+      resumenEl.style.display = 'none';
+    }
+  }
 
   // Tabla
   const tbody = document.getElementById('ap-table-body');
