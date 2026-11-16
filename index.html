@@ -5054,6 +5054,7 @@ async function deleteVaquita(id) {
 }
 
 function renderVaquita() {
+  if (!document.getElementById('vaquita-kpis')) return;
   const all = dbCompartido.vaquita;
 
   // Popular dropdown de bolsillos con los existentes en DB
